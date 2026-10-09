@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 
 # ---------------------------------------------------------
-# CONFIGURAÇÕES GERAIS E FUSO HORÁRIO BRASIL (UTC-3)
+# CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
 # ---------------------------------------------------------
 FUSO_BR = timezone(timedelta(hours=-3))
 
@@ -22,14 +22,43 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
+# Cadastro de Colaboradores
+CADASTRO_COLABORADORES = {
+    "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
+    "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
+}
+
+# Mapeamento de Máquinas por Setor
+MAQUINAS_POR_SETOR = {
+    "Polivalente": ["LEEPACK", "VOLPACK", "EVOLUTION 1", "LINEA 1", "LINEA 2", "STICK 01", "STICK 02", "M028"],
+    "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
+    "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
+}
+
+# Dicionário de Códigos de Ocorrências da Ficha PRO.DC1416
+CODIGOS_OCORRENCIAS = {
+    "11": "SEM PROGRAMAÇÃO", "12": "REFEIÇÃO", "14": "DDS", "15": "REUNIÃO/TREINAMENTOS/FESTAS",
+    "17": "MANUTENÇÃO PREVENTIVA", "20": "INÍCIO/FIM DE PRODUÇÃO", "21": "TESTES", "22": "INVENTÁRIO",
+    "24": "MANUTENÇÃO CORRETIVA ELÉTRICA", "25": "MANUTENÇÃO CORRETIVA MECÂNICA", "95": "AGUARDANDO MANUTENÇÃO",
+    "97": "SETUP", "101": "FALTA DE PESSOAL", "102": "LIMPEZA DE ÁREA", "105": "LIMPEZA DE EQUIPAMENTO/ÁREA",
+    "107": "TROCA DE BOBINA", "109": "TROCA DE INSUMOS", "111": "ATRASO NO INÍCIO DO TURNO",
+    "113": "REGULAGEM DE MÁQUINA", "117": "AJUSTE DE GUIAS", "124": "AJUSTE DE DATADOR",
+    "127": "AJUSTE SELADORA 3M", "128": "ACÚMULO NA ESTEIRA DA LINHA", "131": "PARADA DA ESTEIRA DE TRANSPORTE",
+    "141": "AJUSTE DE ENCAIXOTADORA", "155": "TROCA DE MOEGA", "401": "FALTA DE ENERGIA", "402": "FALTA DE ÁGUA",
+    "404": "FALTA DE AR COMPRIMIDO", "407": "FALTA DE PRODUTO", "408": "PROBLEMA DE REDE/TI",
+    "501": "FALTA DE INSUMO/MATÉRIA PRIMA", "504": "FALTA DE ESPAÇO - ESTOQUE CHEIO",
+    "601": "PROBLEMA NA EMBALAGEM PRIMÁRIA", "603": "PROBLEMA NA EMBALAGEM SECUNDÁRIA",
+    "604": "DESVIOS DE QUALIDADE", "608": "RETRABALHO DE PRODUTO NÃO CONFORME"
+}
+
 st.set_page_config(
-    page_title="Qualit3c | Passagem de Turno da Produção",
-    page_icon="📊",
+    page_title="Qualit3c | PRO.DC1416 Digital",
+    page_icon="📋",
     layout="wide"
 )
 
 # ---------------------------------------------------------
-# ESTILIZAÇÃO CSS (Padrão Qualit3c)
+# ESTILIZAÇÃO CSS
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -42,9 +71,25 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
     .qualit3c-title {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
         font-weight: 800;
         margin: 0;
+    }
+    .qualit3c-card {
+        background-color: #ffffff;
+        border: 1px solid #dcdfe6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .qualit3c-footer {
+        text-align: center;
+        color: #7f8c8d;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-top: 30px;
+        padding: 10px;
+        border-top: 1px solid #dcdfe6;
     }
     .stButton > button {
         background-color: #e67e22 !important;
@@ -52,204 +97,219 @@ st.markdown("""
         border: none !important;
         border-radius: 6px !important;
         font-weight: 700 !important;
-        padding: 10px 20px !important;
-    }
-    .stButton > button:hover {
-        background-color: #d35400 !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# CABEÇALHO
-# ---------------------------------------------------------
-dt_hoje = obter_datetime_br()
-turno_sugerido = calcular_turno(dt_hoje)
+if "pagina" not in st.session_state:
+    st.session_state.pagina = 1
+if "operador_matricula" not in st.session_state:
+    st.session_state.operador_matricula = ""
+if "operador_nome" not in st.session_state:
+    st.session_state.operador_nome = ""
+if "setor_selecionado" not in st.session_state:
+    st.session_state.setor_selecionado = "Polivalente"
 
-st.markdown(f"""
-<div class="qualit3c-topbar">
-    <div class="qualit3c-title">📋 Qualit3c — Relatório de Passagem de Turno da Produção</div>
+dt_agora = obter_datetime_br()
+turno_atual = calcular_turno(dt_agora)
+
+# ---------------------------------------------------------
+# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR E SETOR
+# ---------------------------------------------------------
+if st.session_state.pagina == 1:
+    st.markdown("""
+    <div class="qualit3c-topbar">
+        <div class="qualit3c-title">🏭 Qualit3c — Controle de Empacotamento por Equipamento (PRO.DC1416)</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_l, col_c, col_r = st.columns([1, 1.8, 1])
+    with col_c:
+        st.subheader("🔑 Login do Operador")
+        with st.form("form_login_operador"):
+            mat_input = st.text_input("Matrícula do Operador:", placeholder="Ex: 32164")
+            setor_input = st.selectbox("Setor de Atuação:", ["Polivalente", "Instantâneos", "Revolução"])
+            
+            btn_entrar = st.form_submit_button("INICIAR REGISTRO DIGITAL", use_container_width=True)
+            if btn_entrar:
+                mat_clean = mat_input.strip()
+                if not mat_clean:
+                    st.error("Informe a matrícula.")
+                else:
+                    nome_encontrado = CADASTRO_COLABORADORES.get(mat_clean, f"OPERADOR ({mat_clean})")
+                    st.session_state.operador_matricula = mat_clean
+                    st.session_state.operador_nome = nome_encontrado
+                    st.session_state.setor_selecionado = setor_input
+                    st.session_state.pagina = 2
+                    st.rerun()
+
+# ---------------------------------------------------------
+# PÁGINA 2: FORMULÁRIO COMPLETO DA FICHA PRO.DC1416
+# ---------------------------------------------------------
+elif st.session_state.pagina == 2:
+    st.markdown(f"""
+    <div class="qualit3c-topbar">
+        <div style="font-size: 0.85rem; font-weight: 700;">OPERADOR: {st.session_state.operador_nome.upper()} ({st.session_state.operador_matricula}) | SETOR: {st.session_state.setor_selecionado.upper()}</div>
+        <div class="qualit3c-title">Controle de Empacotamento por Equipamento (PRO.DC1416 - R00)</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.sidebar.markdown(f"**Operador:** {st.session_state.operador_nome}")
+    st.sidebar.markdown(f"**Matrícula:** {st.session_state.operador_matricula}")
+    st.sidebar.markdown(f"**Setor:** {st.session_state.setor_selecionado}")
+    if st.sidebar.button("Trocar Operador / Setor", use_container_width=True):
+        st.session_state.pagina = 1
+        st.rerun()
+
+    maquinas_opcoes = MAQUINAS_POR_SETOR.get(st.session_state.setor_selecionado, [])
+
+    aba_ficha, aba_misturas, aba_relatorio = st.tabs([
+        "📝 Ficha da Máquina (PRO.DC1416)", 
+        "🥣 Misturas e Pré-Mix", 
+        "📄 Relatório Final / Passagem de Turno"
+    ])
+
+    with aba_ficha:
+        st.subheader("1. Cabeçalho e Identificação da Máquina")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            maq_sel = st.selectbox("Máquina:", maquinas_opcoes)
+        with c2:
+            data_prod = st.date_input("Data:", dt_agora)
+        with c3:
+            turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
+        with c4:
+            lote_prod = st.text_input("Lote:", value="1096176")
+
+        c_p1, c_p2, c_p3, c_p4 = st.columns([2, 1, 1, 1])
+        with c_p1:
+            desc_produto = st.text_input("Descrição do Produto:", value="CAP. CLASSIC")
+        with c_p2:
+            marca_produto = st.text_input("Marca:", value="3CORAÇÕES")
+        with c_p3:
+            gramatura_prod = st.text_input("Gramatura (g):", value="100")
+        with c_p4:
+            alergenico_sel = st.selectbox("Alergênico:", ["Leite e Soja", "Castanha", "Não Contém"])
+
+        st.subheader("2. Tempos, Metas e Produção Final")
+        tm1, tm2, tm3, tm4, tm5, tm6 = st.columns(6)
+        with tm1:
+            meta_prod = st.number_input("Meta (unid):", value=20000, step=500)
+        with tm2:
+            tot_prod = st.number_input("Total Produção:", value=14568, step=1)
+        with tm3:
+            hora_ini = st.time_input("Hora Início:", datetime.strptime("05:40", "%H:%M").time())
+        with tm4:
+            tempo_desp = st.number_input("Tempo Desperdício (min):", value=136)
+        with tm5:
+            hora_fim = st.time_input("Hora Término:", datetime.strptime("14:00", "%H:%M").time())
+        with tm6:
+            horas_trab = st.number_input("Horas Trabalhadas (min):", value=364)
+
+        st.subheader("3. Desperdício e Perdas")
+        d1, d2, d3, d4, d5 = st.columns(5)
+        with d1:
+            desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.300, format="%.3f")
+        with d2:
+            desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
+        with d3:
+            desp_terciaria = st.number_input("Embalagem Terciária:", value=0.0)
+        with d4:
+            desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
+        with d5:
+            desp_varricao = st.number_input("Varrição (kg):", value=0.0)
+
+        st.subheader("4. Apontamento de Ocorrências (Códigos da Ficha)")
+        st.caption("Selecione os códigos de paradas/ocorrencias e informe o tempo em minutos.")
+        
+        c_oc1, c_oc2 = st.columns(2)
+        with c_oc1:
+            oc_cod1 = st.selectbox("Ocorrência 1:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=3) # DDS
+            oc_min1 = st.number_input("Minutos Ocorrência 1:", value=20)
+            
+            oc_cod2 = st.selectbox("Ocorrência 2:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=2) # Refeição
+            oc_min2 = st.number_input("Minutos Ocorrência 2:", value=60)
+
+        with c_oc2:
+            oc_cod3 = st.selectbox("Ocorrência 3:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=30) # Troca Moega
+            oc_min3 = st.number_input("Minutos Ocorrência 3:", value=20)
+            
+            oc_cod4 = st.selectbox("Ocorrência 4:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=28) # Falta de Produto
+            oc_min4 = st.number_input("Minutos Ocorrência 4:", value=36)
+
+        st.subheader("5. Equipe Auxiliar e Observações")
+        e1, e2 = st.columns(2)
+        with e1:
+            aux_empacotamento = st.text_input("Auxiliar Empacotamento:", value="AUDACIR")
+            operador_linha = st.text_input("Operador da Máquina:", value="GILVAN")
+        with e2:
+            obs_gerais = st.text_area("Observações Gerais da Ficha:", placeholder="Informe observações adicionais da rodagem...")
+
+    with aba_misturas:
+        st.subheader("Controles de Misturas e Pré-Mix do Turno")
+        cm1, cm2 = st.columns(2)
+        with cm1:
+            misturas_txt = st.text_area("Misturas Realizadas:", value="4 café com leite tradicional\n4 capp classic food\n2 capp santa clara", height=140)
+        with cm2:
+            premix_txt = st.text_area("Pesagem de Pré-Mix:", value="7 chocolate quente Lugano\n5 capp classic nova fórmula", height=140)
+        cenario_premix_txt = st.text_area("Cenário Atual de Pré-Mix (Estoque em linha):", value="1 Ultra coffe double shot\n3 Ultra coffee caramelo\n2 Ultra coffee vanilla", height=150)
+
+    with aba_relatorio:
+        st.subheader("📄 Relatório Digital Consolidado")
+        
+        data_f_str = data_prod.strftime("%d.%m.%Y")
+        turno_letra = turno_sel.split()[-1]
+        
+        rel_txt = []
+        rel_txt.append(f"📊 *Passagem de Turno - {data_f_str} (Turno {turno_letra})*")
+        rel_txt.append(f"Setor: {st.session_state.setor_selecionado} | Máquina: *{maq_sel}*")
+        rel_txt.append(f"Operador: {operador_linha} (Matrícula: {st.session_state.operador_matricula})")
+        rel_txt.append(f"Aux. Empacotamento: {aux_empacotamento}\n")
+        
+        rel_txt.append(f"• *Produto:* {desc_produto} ({gramatura_prod}g - {marca_produto})")
+        rel_txt.append(f"• *Lote:* {lote_prod}")
+        rel_txt.append(f"• *Produção Total:* {tot_prod:,} unid (Meta: {meta_prod:,})".replace(",", "."))
+        rel_txt.append(f"• *Horário:* {hora_ini.strftime('%H:%M')} às {hora_fim.strftime('%H:%M')} ({horas_trab} min trab)")
+        rel_txt.append(f"• *Desperdício Embalagem Primária:* {desp_primaria:.3f} kg\n")
+        
+        rel_txt.append("*Ocorrências / Paradas da Ficha:*")
+        if oc_cod1 != "Nenhuma" and oc_min1 > 0: rel_txt.append(f"• {oc_cod1}: {oc_min1} min")
+        if oc_cod2 != "Nenhuma" and oc_min2 > 0: rel_txt.append(f"• {oc_cod2}: {oc_min2} min")
+        if oc_cod3 != "Nenhuma" and oc_min3 > 0: rel_txt.append(f"• {oc_cod3}: {oc_min3} min")
+        if oc_cod4 != "Nenhuma" and oc_min4 > 0: rel_txt.append(f"• {oc_cod4}: {oc_min4} min")
+        rel_txt.append("")
+
+        if misturas_txt.strip():
+            rel_txt.append("*Misturas:*")
+            rel_txt.append(misturas_txt.strip() + "\n")
+
+        if premix_txt.strip():
+            rel_txt.append("*Pesagem de Pré-Mix:*")
+            rel_txt.append(premix_txt.strip() + "\n")
+
+        if cenario_premix_txt.strip():
+            rel_txt.append("*Cenário Atual de Pré-Mix:*")
+            rel_txt.append(cenario_premix_txt.strip() + "\n")
+
+        rel_txt.append("----------------------------------------")
+        rel_txt.append("Documento de Referência: PRO.DC1416 - R00")
+        
+        texto_relatorio_final = "\n".join(rel_txt)
+        
+        st.text_area("Cópia rápida do Relatório:", value=texto_relatorio_final, height=420)
+        
+        st.download_button(
+            label="📥 Baixar Relatório Digital (.txt)",
+            data=texto_relatorio_final,
+            file_name=f"PRO_DC1416_{maq_sel}_Turno_{turno_letra}_{data_f_str}.txt",
+            mime="text/plain"
+        )
+
+# ---------------------------------------------------------
+# RODAPÉ OFICIAL
+# ---------------------------------------------------------
+st.markdown("""
+<div class="qualit3c-footer">
+    SISTEMA QUALIT3C — CONTROLE DE EMPACOTAMENTO POR EQUIPAMENTO | PRO.DC1416 - R00
 </div>
 """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# SIDEBAR / PARÂMETROS
-# ---------------------------------------------------------
-st.sidebar.header("⚙️ Parâmetros do Relatório")
-data_relatorio = st.sidebar.date_input("Data da Produção", dt_hoje)
-turno_selecionado = st.sidebar.selectbox("Turno", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_sugerido))
-supervisor_nome = st.sidebar.text_input("Supervisor Responsável", value="Nathanael")
-
-# Lista das Máquinas Padrão da Fábrica
-MAQUINAS_LISTA = [
-    "Volpack", "Evolution 1", "Leepack", "Bosch 16", 
-    "Linea 1", "Linea 2", "Stick 01", "Stick 02", "M028"
-]
-
-# ---------------------------------------------------------
-# ABAS DO APLICATIVO
-# ---------------------------------------------------------
-aba1, aba2, aba3, aba4 = st.tabs([
-    "⚙️ Produção por Máquina", 
-    "🥣 Misturas e Pré-Mix", 
-    "🔄 Cenário e Transição de Turnos", 
-    "📄 Gerar Relatório Final"
-])
-
-# ---------------------------------------------------------
-# ABA 1: PRODUÇÃO E OCORRÊNCIAS POR MÁQUINA
-# ---------------------------------------------------------
-with aba1:
-    st.subheader("📊 Produção Final e Ocorrências das Máquinas")
-    st.caption("Insira a produção física confirmada e as observações operacionais de cada linha.")
-    
-    dados_maquinas = {}
-    
-    col_a, col_b = st.columns(2)
-    
-    for idx, maq in enumerate(MAQUINAS_LISTA):
-        col_alvo = col_a if idx % 2 == 0 else col_b
-        
-        with col_alvo:
-            with st.expander(f"🔹 **{maq}**", expanded=True):
-                sem_prog = st.checkbox(f"Sem Programação ({maq})", key=f"sp_{maq}")
-                
-                if sem_prog:
-                    dados_maquinas[maq] = {
-                        "producao": "Sem programação",
-                        "ocorrencias": [],
-                        "produto": "-",
-                        "lote": "-"
-                    }
-                else:
-                    prod = st.number_input(f"Produção Final (unid):", min_value=0, value=0, step=100, key=f"prod_{maq}")
-                    produto_desc = st.text_input("Produto / Descrição:", key=f"prod_desc_{maq}")
-                    lote_num = st.text_input("Lote:", key=f"lote_{maq}")
-                    
-                    ocorrencias_raw = st.text_area(
-                        "Ocorrências / Regulagens (uma por linha):", 
-                        placeholder="Ex:\nTroca de bobina\nRegulagem operacional\nEsteira travando", 
-                        key=f"ocor_{maq}",
-                        height=100
-                    )
-                    
-                    lista_ocor = [o.strip() for o in ocorrencias_raw.split("\n") if o.strip()]
-                    
-                    dados_maquinas[maq] = {
-                        "producao": f"{prod:,}".replace(",", "."),
-                        "produto": produto_desc,
-                        "lote": lote_num,
-                        "ocorrencias": lista_ocor
-                    }
-
-# ---------------------------------------------------------
-# ABA 2: MISTURAS E PRÉ-MIX
-# ---------------------------------------------------------
-with aba2:
-    st.subheader("🥣 Controles de Mistura e Pré-Mix")
-    
-    col_m1, col_m2 = st.columns(2)
-    
-    with col_m1:
-        st.markdown("### ☕ Misturas Realizadas")
-        misturas_txt = st.text_area(
-            "Liste as misturas (Ex: 4 café com leite tradicional):",
-            placeholder="4 café com leite tradicional\n4 capp classic food\n2 capp santa clara",
-            height=150
-        )
-        
-    with col_m2:
-        st.markdown("### ⚖️ Pesagem de Pré-Mix")
-        premix_txt = st.text_area(
-            "Liste a pesagem de pré-mix:",
-            placeholder="7 chocolate quente Lugano\n5 capp classic nova fórmula",
-            height=150
-        )
-        
-    st.markdown("### 📦 Cenário Atual de Pré-Mix (Estoque em Linha)")
-    cenario_premix_txt = st.text_area(
-        "Cenário atual de Pré-mix preparado:",
-        placeholder="1 Ultra coffe double shot\n3 Ultra coffee caramelo\n1 Capp Iguaçu tradicional 300kg exportação",
-        height=200
-    )
-
-# ---------------------------------------------------------
-# ABA 3: TRANSIÇÃO DE TURNOS (RECEBIDO E ENTREGUE)
-# ---------------------------------------------------------
-with aba3:
-    st.subheader("🔄 Cenário de Posição de Máquinas (Reserva / Na Linha)")
-    
-    col_t1, col_t2 = st.columns(2)
-    
-    with col_t1:
-        st.markdown("### 📥 Cenário Recebido do Turno Anterior")
-        cenario_recebido = st.text_area(
-            "Situação recebida:",
-            value="028: 1 na linha e 1 reserva\nVolpack: meia na linha e 1 reserva\nLinea 1: 1 na linha e 2 reserva\nLinea 2: \nStick 01: 1 na linha\nStick 02: 1 na linha\nBosch: 1 na linha e 3 reserva\nLeepack: 3 reserva",
-            height=250
-        )
-        
-    with col_t2:
-        st.markdown("### 📤 Cenário Entregue para o Próximo Turno")
-        cenario_entregue = st.text_area(
-            "Situação para o próximo turno:",
-            value="028: 1 na linha e 1 reserva\nVolpack: 1 na linha\nLinea 1: 1 na linha e 1 reserva\nLinea 2: \nStick 01: 1 na linha\nStick 02: 1 na linha\nBosh 16: 1 na linha e 3 reserva\nLeepack: 1 na linha e 1 reserva",
-            height=250
-        )
-
-# ---------------------------------------------------------
-# ABA 4: GERAÇÃO E FORMATAÇÃO DO RELATÓRIO
-# ---------------------------------------------------------
-with aba4:
-    st.subheader("📄 Relatório Consolidado de Passagem de Turno")
-    
-    data_str = data_relatorio.strftime("%d.%m")
-    turno_letra = turno_selecionado.split()[-1]
-    
-    # Construção do Relatório em Texto Padronizado
-    relatorio_linhas = []
-    relatorio_linhas.append(f"📊 *Produção {data_str} Turno {turno_letra}*\n")
-    
-    for maq, info in dados_maquinas.items():
-        relatorio_linhas.append(f"*{maq}:* {info['producao']}")
-        if info['produto'] and info['produto'] != "-":
-            relatorio_linhas.append(f"• Produto: {info['produto']} | Lote: {info['lote']}")
-        for oc in info['ocorrencias']:
-            relatorio_linhas.append(f"• {oc}")
-        relatorio_linhas.append("")
-        
-    if misturas_txt.strip():
-        relatorio_linhas.append("*Misturas:*")
-        relatorio_linhas.append(misturas_txt.strip())
-        relatorio_linhas.append("\n")
-        
-    if premix_txt.strip():
-        relatorio_linhas.append("*Pesagem de Pré-Mix:*")
-        relatorio_linhas.append(premix_txt.strip())
-        relatorio_linhas.append("\n")
-        
-    if cenario_premix_txt.strip():
-        relatorio_linhas.append("*Cenário atual de Pré-mix:*")
-        for linha in cenario_premix_txt.strip().split("\n"):
-            relatorio_linhas.append(f"• {linha.strip()}" if not linha.startswith("•") else linha)
-        relatorio_linhas.append("\n")
-        
-    if cenario_recebido.strip():
-        relatorio_linhas.append(f"*Cenário que recebemos:*")
-        relatorio_linhas.append(cenario_recebido.strip())
-        relatorio_linhas.append("\n")
-        
-    if cenario_entregue.strip():
-        relatorio_linhas.append(f"*Cenário para o próximo turno:*")
-        relatorio_linhas.append(cenario_entregue.strip())
-        
-    texto_relatorio_final = "\n".join(relatorio_linhas)
-    
-    st.text_area("Cópia rápida para WhatsApp / e-mail:", value=texto_relatorio_final, height=450)
-    
-    st.download_button(
-        label="📥 Baixar Relatório (.txt)",
-        data=texto_relatorio_final,
-        file_name=f"Relatorio_Passagem_Turno_{turno_letra}_{data_str}.txt",
-        mime="text/plain"
-    )
