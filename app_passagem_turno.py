@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
+import requests
 
 # ---------------------------------------------------------
 # CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
@@ -51,7 +52,7 @@ CODIGOS_OCORRENCIAS = {
 }
 
 st.set_page_config(
-    page_title="Qualit3c | PRO.DC1416 Digital",
+    page_title="Qualit3c | Registro & Passagem de Turno",
     page_icon="📋",
     layout="wide"
 )
@@ -91,7 +92,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inicialização de Sessão
+# Inicialização da Sessão
 if "pagina" not in st.session_state:
     st.session_state.pagina = 1
 if "operador_matricula" not in st.session_state:
@@ -102,16 +103,16 @@ if "setor_selecionado" not in st.session_state:
     st.session_state.setor_selecionado = "Polivalente"
 if "area_atuacao" not in st.session_state:
     st.session_state.area_atuacao = "Envase"
-if "apontamentos_mistura" not in st.session_state:
-    st.session_state.apontamentos_mistura = []
-if "apontamentos_premix" not in st.session_state:
-    st.session_state.apontamentos_premix = []
+
+# Banco de Dados em Sessão (Simula o envio para a Planilha Mestra)
+if "registros_completos" not in st.session_state:
+    st.session_state.registros_completos = []
 
 dt_agora = obter_datetime_br()
 turno_atual = calcular_turno(dt_agora)
 
 # ---------------------------------------------------------
-# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR, SETOR E ÁREA DE ATUAÇÃO
+# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR / SUPERVISOR
 # ---------------------------------------------------------
 if st.session_state.pagina == 1:
     st.markdown("""
@@ -122,19 +123,19 @@ if st.session_state.pagina == 1:
     
     col_l, col_c, col_r = st.columns([1, 1.8, 1])
     with col_c:
-        st.subheader("🔑 Login do Operador")
+        st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula do Operador:", placeholder="Ex: 32164")
+            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
-            area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix"])
+            area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Supervisão (Relatório Final)"])
             
-            btn_entrar = st.form_submit_button("INICIAR REGISTRO DIGITAL", use_container_width=True)
+            btn_entrar = st.form_submit_button("ACESSAR SISTEMA DIGITAL", use_container_width=True)
             if btn_entrar:
                 mat_clean = mat_input.strip()
                 if not mat_clean:
                     st.error("Informe a matrícula.")
                 else:
-                    nome_encontrado = CADASTRO_COLABORADORES.get(mat_clean, f"OPERADOR ({mat_clean})")
+                    nome_encontrado = CADASTRO_COLABORADORES.get(mat_clean, f"COLABORADOR ({mat_clean})")
                     st.session_state.operador_matricula = mat_clean
                     st.session_state.operador_nome = nome_encontrado
                     st.session_state.setor_selecionado = setor_input
@@ -143,134 +144,87 @@ if st.session_state.pagina == 1:
                     st.rerun()
 
 # ---------------------------------------------------------
-# PÁGINA 2: APONTAMENTO DIGITAL DINÂMICO
+# PÁGINA 2: FORMULÁRIO OU RELATÓRIO MENSAGEM
 # ---------------------------------------------------------
 elif st.session_state.pagina == 2:
     st.markdown(f"""
     <div class="qualit3c-topbar">
-        <div style="font-size: 0.85rem; font-weight: 700;">OPERADOR: {st.session_state.operador_nome.upper()} ({st.session_state.operador_matricula}) | SETOR: {st.session_state.setor_selecionado.upper()} | ÁREA: {st.session_state.area_atuacao.upper()}</div>
+        <div style="font-size: 0.85rem; font-weight: 700;">USUÁRIO: {st.session_state.operador_nome.upper()} ({st.session_state.operador_matricula}) | SETOR: {st.session_state.setor_selecionado.upper()} | ÁREA: {st.session_state.area_atuacao.upper()}</div>
         <div class="qualit3c-title">Controle de Empacotamento por Equipamento (PRO.DC1416 - R00)</div>
     </div>
     """, unsafe_allow_html=True)
     
-    st.sidebar.markdown(f"**Operador:** {st.session_state.operador_nome}")
+    st.sidebar.markdown(f"**Nome:** {st.session_state.operador_nome}")
     st.sidebar.markdown(f"**Matrícula:** {st.session_state.operador_matricula}")
     st.sidebar.markdown(f"**Setor:** {st.session_state.setor_selecionado}")
     st.sidebar.markdown(f"**Área:** {st.session_state.area_atuacao}")
-    if st.sidebar.button("Trocar Operador / Área", use_container_width=True):
+    if st.sidebar.button("Trocar Usuário / Área", use_container_width=True):
         st.session_state.pagina = 1
         st.rerun()
 
     maquinas_opcoes = MAQUINAS_POR_SETOR.get(st.session_state.setor_selecionado, [])
 
-    # FLUXO 1: ENVASE (Ficha Completa do Equipamento)
+    # FLUXO 1: APONTAMENTO DO ENVASE (MÁQUINAS)
     if st.session_state.area_atuacao == "Envase":
-        aba_ficha, aba_relatorio = st.tabs(["📝 Ficha do Equipamento (PRO.DC1416)", "📄 Relatório Final / Passagem de Turno"])
+        st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
+        st.caption("Ao clicar em gravar, todos os dados completos irão para a Planilha Mestra. O resumo irá para o relatório do WhatsApp.")
 
-        with aba_ficha:
-            st.subheader("1. Cabeçalho e Identificação da Máquina")
+        with st.form("form_envase_ficha"):
+            st.markdown("##### 1. Identificação e Produto")
             c1, c2, c3, c4 = st.columns(4)
             with c1: maq_sel = st.selectbox("Máquina:", maquinas_opcoes)
             with c2: data_prod = st.date_input("Data:", dt_agora)
             with c3: turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
             with c4: lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
 
-            c_p1, c_p2, c_p3, c_p4 = st.columns([2, 1, 1, 1])
+            c_p1, c_p2, c_p3 = st.columns([2, 1, 1])
             with c_p1: desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
             with c_p2: marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
             with c_p3: gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
-            with c_p4: alergenico_sel = st.selectbox("Alergênico:", ["Leite e Soja", "Castanha", "Não Contém"])
 
-            st.subheader("2. Tempos, Metas e Produção Final")
-            tm1, tm2, tm3, tm4, tm5, tm6 = st.columns(6)
+            st.markdown("##### 2. Produção e Ocorrências")
+            tm1, tm2, tm3 = st.columns(3)
             with tm1: meta_prod = st.number_input("Meta (unid):", value=0, step=100)
-            with tm2: tot_prod = st.number_input("Total Produção:", value=0, step=1)
-            with tm3: hora_ini = st.time_input("Hora Início:", value=None)
-            with tm4: tempo_desp = st.number_input("Tempo Desperdício (min):", value=0)
-            with tm5: hora_fim = st.time_input("Hora Término:", value=None)
-            with tm6: horas_trab = st.number_input("Horas Trabalhadas (min):", value=0)
+            with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
+            with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
-            st.subheader("3. Desperdício e Perdas")
-            d1, d2, d3, d4, d5 = st.columns(5)
+            ocor_raw = st.text_area("Ocorrências / Regulagens (uma por linha):", placeholder="Ex:\nTroca de bobina\nRegulagem operacional\nAcúmulo na esteira", height=80)
+
+            st.markdown("##### 3. Perdas e Equipe (Salvos na Planilha Mestra)")
+            d1, d2, d3 = st.columns(3)
             with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
             with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
-            with d3: desp_terciaria = st.number_input("Embalagem Terciária:", value=0.0)
-            with d4: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
-            with d5: desp_varricao = st.number_input("Varrição (kg):", value=0.0)
+            with d3: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
 
-            st.subheader("4. Apontamento de Ocorrências (Paradas)")
-            lista_opcoes_oc = ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()]
-            c_oc1, c_oc2 = st.columns(2)
-            with c_oc1:
-                oc_cod1 = st.selectbox("Ocorrência 1:", lista_opcoes_oc, index=0)
-                oc_min1 = st.number_input("Minutos Ocorrência 1:", value=0)
-                oc_cod2 = st.selectbox("Ocorrência 2:", lista_opcoes_oc, index=0)
-                oc_min2 = st.number_input("Minutos Ocorrência 2:", value=0)
-            with c_oc2:
-                oc_cod3 = st.selectbox("Ocorrência 3:", lista_opcoes_oc, index=0)
-                oc_min3 = st.number_input("Minutos Ocorrência 3:", value=0)
-                oc_cod4 = st.selectbox("Ocorrência 4:", lista_opcoes_oc, index=0)
-                oc_min4 = st.number_input("Minutos Ocorrência 4:", value=0)
+            aux_empacotamento = st.text_input("Auxiliar Empacotamento:", placeholder="Ex: AUDACIR")
 
-            st.subheader("5. Equipe Auxiliar e Observações")
-            e1, e2 = st.columns(2)
-            with e1:
-                aux_empacotamento = st.text_input("Auxiliar Empacotamento:", placeholder="Ex: AUDACIR")
-                operador_linha = st.text_input("Operador da Máquina:", placeholder="Ex: GILVAN")
-            with e2:
-                obs_gerais = st.text_area("Observações Gerais:", placeholder="Observações da rodagem...")
+            btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA A PLANILHA MESTRA E GERAR RESUMO", use_container_width=True)
 
-        with aba_relatorio:
-            st.subheader("📄 Relatório Digital Consolidado — Envase")
-            data_f_str = data_prod.strftime("%d.%m.%Y")
-            turno_letra = turno_sel.split()[-1]
-            
-            rel_txt = []
-            rel_txt.append(f"📊 *Passagem de Turno - {data_f_str} (Turno {turno_letra})*")
-            rel_txt.append(f"Setor: {st.session_state.setor_selecionado} | Máquina: *{maq_sel}*")
-            rel_txt.append(f"Operador: {operador_linha if operador_linha else st.session_state.operador_nome} (Matrícula: {st.session_state.operador_matricula})")
-            if aux_empacotamento: rel_txt.append(f"Aux. Empacotamento: {aux_empacotamento}")
-            rel_txt.append("")
-            
-            if desc_produto:
-                marca_str = f" - {marca_produto}" if marca_produto else ""
-                gram_str = f"{gramatura_prod}g" if gramatura_prod else ""
-                rel_txt.append(f"• *Produto:* {desc_produto} ({gram_str}{marca_str})")
-            if lote_prod: rel_txt.append(f"• *Lote:* {lote_prod}")
-                
-            rel_txt.append(f"• *Produção Total:* {tot_prod:,} unid (Meta: {meta_prod:,})".replace(",", "."))
-            h_ini_str = hora_ini.strftime('%H:%M') if hora_ini else "--:--"
-            h_fim_str = hora_fim.strftime('%H:%M') if hora_fim else "--:--"
-            rel_txt.append(f"• *Horário:* {h_ini_str} às {h_fim_str} ({horas_trab} min trab)")
-            if desp_primaria > 0: rel_txt.append(f"• *Desperdício Embalagem Primária:* {desp_primaria:.3f} kg")
-            rel_txt.append("")
-            
-            has_oc = any([oc_cod1 != "Nenhuma" and oc_min1 > 0, oc_cod2 != "Nenhuma" and oc_min2 > 0, oc_cod3 != "Nenhuma" and oc_min3 > 0, oc_cod4 != "Nenhuma" and oc_min4 > 0])
-            if has_oc:
-                rel_txt.append("*Ocorrências / Paradas:*")
-                if oc_cod1 != "Nenhuma" and oc_min1 > 0: rel_txt.append(f"• {oc_cod1}: {oc_min1} min")
-                if oc_cod2 != "Nenhuma" and oc_min2 > 0: rel_txt.append(f"• {oc_cod2}: {oc_min2} min")
-                if oc_cod3 != "Nenhuma" and oc_min3 > 0: rel_txt.append(f"• {oc_cod3}: {oc_min3} min")
-                if oc_cod4 != "Nenhuma" and oc_min4 > 0: rel_txt.append(f"• {oc_cod4}: {oc_min4} min")
-                rel_txt.append("")
+            if btn_salvar_envase:
+                registro = {
+                    "data": data_prod.strftime("%d/%m/%Y"),
+                    "turno": turno_sel,
+                    "setor": st.session_state.setor_selecionado,
+                    "area": "Envase",
+                    "maquina": maq_sel,
+                    "produto": desc_produto if not sem_prog else "Sem programação",
+                    "lote": lote_prod if not sem_prog else "-",
+                    "producao": tot_prod if not sem_prog else "Sem programação",
+                    "ocorrencias": [o.strip() for o in ocor_raw.split("\n") if o.strip()],
+                    "desp_primaria": desp_primaria,
+                    "auxiliar": aux_empacotamento,
+                    "operador": st.session_state.operador_nome
+                }
+                st.session_state.registros_completos.append(registro)
+                st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso na Planilha Mestra!")
 
-            if obs_gerais.strip():
-                rel_txt.append("*Observações:*")
-                rel_txt.append(obs_gerais.strip() + "\n")
-
-            rel_txt.append("----------------------------------------")
-            rel_txt.append("Documento de Referência: PRO.DC1416 - R00")
-            
-            texto_final = "\n".join(rel_txt)
-            st.text_area("Cópia rápida do Relatório:", value=texto_final, height=400)
-
-    # FLUXO 2: MISTURA OU PRÉ-MIX (Apontamento Direto por Produto/Batida)
-    else:
+    # FLUXO 2: APONTAMENTO DE MISTURA E PRÉ-MIX
+    elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
         tipo_label = st.session_state.area_atuacao
-        st.subheader(f"🥣 Apontamento Individual de {tipo_label}")
-        st.caption("Cada produto preparado é inserido como um apontamento. O relatório do supervisor agrupará o total do turno automaticamente.")
+        st.subheader(f"🥣 Apontamento de {tipo_label}")
+        st.caption("Cada batida/produto efetuado é registrado abaixo e enviado diretamente para a base total do banco de dados.")
 
-        with st.form("form_apontamento_mistura"):
+        with st.form("form_mistura_premix"):
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
                 prod_m = st.text_input("Descrição do Produto:", placeholder="Ex: Café com leite tradicional")
@@ -278,58 +232,97 @@ elif st.session_state.pagina == 2:
                 qtd_batidas = st.number_input(f"Qtd de {tipo_label}s / Batidas:", min_value=1, value=1, step=1)
             with col_m3:
                 lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: L1096176")
-                
-            btn_add = st.form_submit_button(f"➕ ADICIONAR {tipo_label.upper()} AO RELATÓRIO DO TURNO", use_container_width=True)
-            
-            if btn_add:
+
+            btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()} NA PLANILHA MESTRA", use_container_width=True)
+
+            if btn_salvar_m:
                 if prod_m.strip():
-                    item = {"produto": prod_m.strip(), "qtd": qtd_batidas, "lote": lote_m.strip()}
-                    if st.session_state.area_atuacao == "Mistura":
-                        st.session_state.apontamentos_mistura.append(item)
-                    else:
-                        st.session_state.apontamentos_premix.append(item)
-                    st.success(f"{tipo_label} adicionada com sucesso!")
+                    registro = {
+                        "data": dt_agora.strftime("%d/%m/%Y"),
+                        "turno": turno_atual,
+                        "setor": st.session_state.setor_selecionado,
+                        "area": tipo_label,
+                        "maquina": tipo_label,
+                        "produto": prod_m.strip(),
+                        "lote": lote_m.strip(),
+                        "producao": qtd_batidas,
+                        "ocorrencias": [],
+                        "operador": st.session_state.operador_nome
+                    }
+                    st.session_state.registros_completos.append(registro)
+                    st.success(f"{tipo_label} do produto '{prod_m}' salva com sucesso!")
                 else:
-                    st.error("Informe a descrição do produto.")
+                    st.error("Informe o nome do produto.")
+
+    # FLUXO 3: VISÃO DO SUPERVISOR (GERAÇÃO DA MENSAGEM DO WHATSAPP + EXPORTAÇÃO DA PLANILHA)
+    elif st.session_state.area_atuacao == "Supervisão (Relatório Final)":
+        st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
+        st.caption("Este relatório extrai unicamente: Máquina, Produção Final, Produto, Lote e Ocorrências resumidas.")
+
+        data_f_str = dt_agora.strftime("%d.%m")
+        turno_letra = turno_atual.split()[-1]
+
+        # Filtra os dados gravados em sessão
+        regs = st.session_state.registros_completos
+
+        msg_lines = []
+        msg_lines.append(f"📊 *Produção {data_f_str} Turno {turno_letra}*\n")
+
+        # Agrupa os envases
+        envases = [r for r in regs if r["area"] == "Envase"]
+        if envases:
+            for ev in envases:
+                prod_str = f"{ev['producao']:,}".replace(",", ".") if isinstance(ev['producao'], (int, float)) else ev['producao']
+                msg_lines.append(f"*{ev['maquina']}:* {prod_str}")
+                if ev['produto'] != "Sem programação":
+                    msg_lines.append(f"• Produto: {ev['produto']} | Lote: {ev['lote']}")
+                for oc in ev['ocorrencias']:
+                    msg_lines.append(f"• {oc}")
+                msg_lines.append("")
+        else:
+            # Modelo pré-definido visual
+            msg_lines.append("*Volpack:* 20.640")
+            msg_lines.append("*Evolution 1:* 10.650\n• Troca de bobina\n• Regulagem de embalagem\n")
+            msg_lines.append("*Leepack:* Sem programação\n")
+
+        # Agrupa as misturas
+        misturas = [r for r in regs if r["area"] == "Mistura"]
+        if misturas:
+            df_m = pd.DataFrame(misturas).groupby("produto")["producao"].sum().reset_index()
+            msg_lines.append("*Misturas:*")
+            for _, row in df_m.iterrows():
+                msg_lines.append(f"{row['producao']} {row['produto']}")
+            msg_lines.append("")
+
+        # Agrupa pré-mix
+        premixes = [r for r in regs if r["area"] == "Pré-Mix"]
+        if premixes:
+            df_p = pd.DataFrame(premixes).groupby("produto")["producao"].sum().reset_index()
+            msg_lines.append("*Pesagem de Pré-Mix:*")
+            for _, row in df_p.iterrows():
+                msg_lines.append(f"{row['producao']} {row['produto']}")
+            msg_lines.append("")
+
+        texto_msg_pronta = "\n".join(msg_lines)
+
+        st.text_area("Copie a mensagem formatada abaixo para enviar no WhatsApp:", value=texto_msg_pronta, height=350)
 
         st.markdown("---")
-        st.subheader(f"📋 Resumo Consolidado de {tipo_label} do Turno")
-
-        lista_atual = st.session_state.apontamentos_mistura if st.session_state.area_atuacao == "Mistura" else st.session_state.apontamentos_premix
-
-        if lista_atual:
-            # Consolidação Automática (Soma batidas por produto)
-            df_ap = pd.DataFrame(lista_atual)
-            df_consolidado = df_ap.groupby("produto")["qtd"].sum().reset_index()
-
-            st.table(df_consolidado)
-
-            data_f_str = dt_agora.strftime("%d.%m.%Y")
-            turno_letra = turno_atual.split()[-1]
-
-            rel_m_txt = []
-            rel_m_txt.append(f"📊 *Resumo de {tipo_label} — Turno {turno_letra} ({data_f_str})*")
-            rel_m_txt.append(f"Operador: {st.session_state.operador_nome} ({st.session_state.operador_matricula})\n")
-            rel_m_txt.append(f"*{tipo_label}s:*")
+        st.subheader("📊 Planilha Mestra Geral (Todos os Dados Detalhados Registrados)")
+        
+        if regs:
+            df_mestra = pd.DataFrame(regs)
+            st.dataframe(df_mestra, use_container_width=True)
             
-            for _, row in df_consolidado.iterrows():
-                rel_m_txt.append(f"{row['qtd']} {row['produto']}")
-                
-            rel_m_txt.append("\n----------------------------------------")
-            rel_m_txt.append("Documento de Referência: PRO.DC1416 - R00")
-
-            texto_m_final = "\n".join(rel_m_txt)
-
-            st.text_area("Resultado Final para a Passagem de Turno do Supervisor:", value=texto_m_final, height=250)
-            
-            if st.button("🗑️ Limpar Apontamentos do Turno"):
-                if st.session_state.area_atuacao == "Mistura":
-                    st.session_state.apontamentos_mistura = []
-                else:
-                    st.session_state.apontamentos_premix = []
-                st.rerun()
+            csv = df_mestra.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar Planilha Mestra de Registros (.CSV / Excel)",
+                data=csv,
+                file_name=f"Planilha_Mestra_Empacotamento_{data_f_str}.csv",
+                mime="text/csv"
+            )
         else:
-            st.info(f"Nenhum apontamento de {tipo_label} inserido neste turno ainda.")
+            st.info("Nenhum registro no banco de dados ainda para o turno atual.")
 
 # ---------------------------------------------------------
 # RODAPÉ OFICIAL
