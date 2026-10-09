@@ -75,13 +75,6 @@ st.markdown("""
         font-weight: 800;
         margin: 0;
     }
-    .qualit3c-card {
-        background-color: #ffffff;
-        border: 1px solid #dcdfe6;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-    }
     .qualit3c-footer {
         text-align: center;
         color: #7f8c8d;
@@ -179,37 +172,37 @@ elif st.session_state.pagina == 2:
         with c3:
             turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
         with c4:
-            lote_prod = st.text_input("Lote:", value="1096176")
+            lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
 
         c_p1, c_p2, c_p3, c_p4 = st.columns([2, 1, 1, 1])
         with c_p1:
-            desc_produto = st.text_input("Descrição do Produto:", value="CAP. CLASSIC")
+            desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
         with c_p2:
-            marca_produto = st.text_input("Marca:", value="3CORAÇÕES")
+            marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
         with c_p3:
-            gramatura_prod = st.text_input("Gramatura (g):", value="100")
+            gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
         with c_p4:
             alergenico_sel = st.selectbox("Alergênico:", ["Leite e Soja", "Castanha", "Não Contém"])
 
         st.subheader("2. Tempos, Metas e Produção Final")
         tm1, tm2, tm3, tm4, tm5, tm6 = st.columns(6)
         with tm1:
-            meta_prod = st.number_input("Meta (unid):", value=20000, step=500)
+            meta_prod = st.number_input("Meta (unid):", value=0, step=100)
         with tm2:
-            tot_prod = st.number_input("Total Produção:", value=14568, step=1)
+            tot_prod = st.number_input("Total Produção:", value=0, step=1)
         with tm3:
-            hora_ini = st.time_input("Hora Início:", datetime.strptime("05:40", "%H:%M").time())
+            hora_ini = st.time_input("Hora Início:", value=None)
         with tm4:
-            tempo_desp = st.number_input("Tempo Desperdício (min):", value=136)
+            tempo_desp = st.number_input("Tempo Desperdício (min):", value=0)
         with tm5:
-            hora_fim = st.time_input("Hora Término:", datetime.strptime("14:00", "%H:%M").time())
+            hora_fim = st.time_input("Hora Término:", value=None)
         with tm6:
-            horas_trab = st.number_input("Horas Trabalhadas (min):", value=364)
+            horas_trab = st.number_input("Horas Trabalhadas (min):", value=0)
 
         st.subheader("3. Desperdício e Perdas")
         d1, d2, d3, d4, d5 = st.columns(5)
         with d1:
-            desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.300, format="%.3f")
+            desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
         with d2:
             desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
         with d3:
@@ -220,28 +213,30 @@ elif st.session_state.pagina == 2:
             desp_varricao = st.number_input("Varrição (kg):", value=0.0)
 
         st.subheader("4. Apontamento de Ocorrências (Códigos da Ficha)")
-        st.caption("Selecione os códigos de paradas/ocorrencias e informe o tempo em minutos.")
+        st.caption("Selecione os códigos de paradas/ocorrências e informe o tempo em minutos.")
+        
+        lista_opcoes_oc = ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()]
         
         c_oc1, c_oc2 = st.columns(2)
         with c_oc1:
-            oc_cod1 = st.selectbox("Ocorrência 1:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=3) # DDS
-            oc_min1 = st.number_input("Minutos Ocorrência 1:", value=20)
+            oc_cod1 = st.selectbox("Ocorrência 1:", lista_opcoes_oc, index=0)
+            oc_min1 = st.number_input("Minutos Ocorrência 1:", value=0)
             
-            oc_cod2 = st.selectbox("Ocorrência 2:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=2) # Refeição
-            oc_min2 = st.number_input("Minutos Ocorrência 2:", value=60)
+            oc_cod2 = st.selectbox("Ocorrência 2:", lista_opcoes_oc, index=0)
+            oc_min2 = st.number_input("Minutos Ocorrência 2:", value=0)
 
         with c_oc2:
-            oc_cod3 = st.selectbox("Ocorrência 3:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=30) # Troca Moega
-            oc_min3 = st.number_input("Minutos Ocorrência 3:", value=20)
+            oc_cod3 = st.selectbox("Ocorrência 3:", lista_opcoes_oc, index=0)
+            oc_min3 = st.number_input("Minutos Ocorrência 3:", value=0)
             
-            oc_cod4 = st.selectbox("Ocorrência 4:", ["Nenhuma"] + [f"{k} - {v}" for k,v in CODIGOS_OCORRENCIAS.items()], index=28) # Falta de Produto
-            oc_min4 = st.number_input("Minutos Ocorrência 4:", value=36)
+            oc_cod4 = st.selectbox("Ocorrência 4:", lista_opcoes_oc, index=0)
+            oc_min4 = st.number_input("Minutos Ocorrência 4:", value=0)
 
         st.subheader("5. Equipe Auxiliar e Observações")
         e1, e2 = st.columns(2)
         with e1:
-            aux_empacotamento = st.text_input("Auxiliar Empacotamento:", value="AUDACIR")
-            operador_linha = st.text_input("Operador da Máquina:", value="GILVAN")
+            aux_empacotamento = st.text_input("Auxiliar Empacotamento:", placeholder="Ex: AUDACIR")
+            operador_linha = st.text_input("Operador da Máquina:", placeholder="Ex: GILVAN")
         with e2:
             obs_gerais = st.text_area("Observações Gerais da Ficha:", placeholder="Informe observações adicionais da rodagem...")
 
@@ -249,67 +244,7 @@ elif st.session_state.pagina == 2:
         st.subheader("Controles de Misturas e Pré-Mix do Turno")
         cm1, cm2 = st.columns(2)
         with cm1:
-            misturas_txt = st.text_area("Misturas Realizadas:", value="4 café com leite tradicional\n4 capp classic food\n2 capp santa clara", height=140)
+            misturas_txt = st.text_area("Misturas Realizadas:", placeholder="Ex:\n4 café com leite tradicional\n4 capp classic food", height=140)
         with cm2:
-            premix_txt = st.text_area("Pesagem de Pré-Mix:", value="7 chocolate quente Lugano\n5 capp classic nova fórmula", height=140)
-        cenario_premix_txt = st.text_area("Cenário Atual de Pré-Mix (Estoque em linha):", value="1 Ultra coffe double shot\n3 Ultra coffee caramelo\n2 Ultra coffee vanilla", height=150)
-
-    with aba_relatorio:
-        st.subheader("📄 Relatório Digital Consolidado")
-        
-        data_f_str = data_prod.strftime("%d.%m.%Y")
-        turno_letra = turno_sel.split()[-1]
-        
-        rel_txt = []
-        rel_txt.append(f"📊 *Passagem de Turno - {data_f_str} (Turno {turno_letra})*")
-        rel_txt.append(f"Setor: {st.session_state.setor_selecionado} | Máquina: *{maq_sel}*")
-        rel_txt.append(f"Operador: {operador_linha} (Matrícula: {st.session_state.operador_matricula})")
-        rel_txt.append(f"Aux. Empacotamento: {aux_empacotamento}\n")
-        
-        rel_txt.append(f"• *Produto:* {desc_produto} ({gramatura_prod}g - {marca_produto})")
-        rel_txt.append(f"• *Lote:* {lote_prod}")
-        rel_txt.append(f"• *Produção Total:* {tot_prod:,} unid (Meta: {meta_prod:,})".replace(",", "."))
-        rel_txt.append(f"• *Horário:* {hora_ini.strftime('%H:%M')} às {hora_fim.strftime('%H:%M')} ({horas_trab} min trab)")
-        rel_txt.append(f"• *Desperdício Embalagem Primária:* {desp_primaria:.3f} kg\n")
-        
-        rel_txt.append("*Ocorrências / Paradas da Ficha:*")
-        if oc_cod1 != "Nenhuma" and oc_min1 > 0: rel_txt.append(f"• {oc_cod1}: {oc_min1} min")
-        if oc_cod2 != "Nenhuma" and oc_min2 > 0: rel_txt.append(f"• {oc_cod2}: {oc_min2} min")
-        if oc_cod3 != "Nenhuma" and oc_min3 > 0: rel_txt.append(f"• {oc_cod3}: {oc_min3} min")
-        if oc_cod4 != "Nenhuma" and oc_min4 > 0: rel_txt.append(f"• {oc_cod4}: {oc_min4} min")
-        rel_txt.append("")
-
-        if misturas_txt.strip():
-            rel_txt.append("*Misturas:*")
-            rel_txt.append(misturas_txt.strip() + "\n")
-
-        if premix_txt.strip():
-            rel_txt.append("*Pesagem de Pré-Mix:*")
-            rel_txt.append(premix_txt.strip() + "\n")
-
-        if cenario_premix_txt.strip():
-            rel_txt.append("*Cenário Atual de Pré-Mix:*")
-            rel_txt.append(cenario_premix_txt.strip() + "\n")
-
-        rel_txt.append("----------------------------------------")
-        rel_txt.append("Documento de Referência: PRO.DC1416 - R00")
-        
-        texto_relatorio_final = "\n".join(rel_txt)
-        
-        st.text_area("Cópia rápida do Relatório:", value=texto_relatorio_final, height=420)
-        
-        st.download_button(
-            label="📥 Baixar Relatório Digital (.txt)",
-            data=texto_relatorio_final,
-            file_name=f"PRO_DC1416_{maq_sel}_Turno_{turno_letra}_{data_f_str}.txt",
-            mime="text/plain"
-        )
-
-# ---------------------------------------------------------
-# RODAPÉ OFICIAL
-# ---------------------------------------------------------
-st.markdown("""
-<div class="qualit3c-footer">
-    SISTEMA QUALIT3C — CONTROLE DE EMPACOTAMENTO POR EQUIPAMENTO | PRO.DC1416 - R00
-</div>
-""", unsafe_allow_html=True)
+            premix_txt = st.text_area("Pesagem de Pré-Mix:", placeholder="Ex:\n7 chocolate quente Lugano\n5 capp classic nova fórmula", height=140)
+        cenario_premix_txt
