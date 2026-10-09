@@ -22,10 +22,11 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro de Colaboradores
+# Cadastro de Colaboradores Atualizado
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
+    "32013": "RAFAEL FERREIRA DE OLIVEIRA",
 }
 
 # Mapeamento de Máquinas por Setor
@@ -104,7 +105,6 @@ if "setor_selecionado" not in st.session_state:
 if "area_atuacao" not in st.session_state:
     st.session_state.area_atuacao = "Envase"
 
-# Banco de Dados em Sessão (Simula o envio para a Planilha Mestra)
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
 
@@ -125,7 +125,7 @@ if st.session_state.pagina == 1:
     with col_c:
         st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
+            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32013")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
             area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Supervisão (Relatório Final)"])
             
@@ -262,13 +262,11 @@ elif st.session_state.pagina == 2:
         data_f_str = dt_agora.strftime("%d.%m")
         turno_letra = turno_atual.split()[-1]
 
-        # Filtra os dados gravados em sessão
         regs = st.session_state.registros_completos
 
         msg_lines = []
         msg_lines.append(f"📊 *Produção {data_f_str} Turno {turno_letra}*\n")
 
-        # Agrupa os envases
         envases = [r for r in regs if r["area"] == "Envase"]
         if envases:
             for ev in envases:
@@ -280,12 +278,10 @@ elif st.session_state.pagina == 2:
                     msg_lines.append(f"• {oc}")
                 msg_lines.append("")
         else:
-            # Modelo pré-definido visual
             msg_lines.append("*Volpack:* 20.640")
             msg_lines.append("*Evolution 1:* 10.650\n• Troca de bobina\n• Regulagem de embalagem\n")
             msg_lines.append("*Leepack:* Sem programação\n")
 
-        # Agrupa as misturas
         misturas = [r for r in regs if r["area"] == "Mistura"]
         if misturas:
             df_m = pd.DataFrame(misturas).groupby("produto")["producao"].sum().reset_index()
@@ -294,7 +290,6 @@ elif st.session_state.pagina == 2:
                 msg_lines.append(f"{row['producao']} {row['produto']}")
             msg_lines.append("")
 
-        # Agrupa pré-mix
         premixes = [r for r in regs if r["area"] == "Pré-Mix"]
         if premixes:
             df_p = pd.DataFrame(premixes).groupby("produto")["producao"].sum().reset_index()
