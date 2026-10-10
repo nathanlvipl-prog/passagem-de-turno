@@ -21,7 +21,7 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro Oficial de Colaboradores (Atualizado)
+# Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
@@ -30,28 +30,48 @@ CADASTRO_COLABORADORES = {
     "21491": "FLÁVIO GIOVANE FERNANDES DA SILVA",
     "32193": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
     "22052": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
-    "32037": "ITALO SILVA DO NASCIMENTO",
+    "32037": "ÍTALA SILVA DO NASCIMENTO",
     "32308": "JOÃO VICTOR BARBOSA DA SILVA",
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Equipe Fixa Padrão por Máquina/Linha
+# Equipe Fixa Mapeada da Lista Oficial de Envase Polivalente (Turno C)
 EQUIPE_FIXA_MAQUINAS = {
-    "LINEA 1": {
-        "operador": "ITALO SILVA DO NASCIMENTO",
-        "auxiliares": ["APOLÔNIO", "JEFERSON", "DAVI"]
-    },
-    "LEEPACK": {
-        "operador": "GILVAN",
-        "auxiliares": ["AUDACIR"]
+    "M028": {
+        "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
+        "auxiliares": ["LUAN TALES DA COSTA OLIVEIRA", "EVERSON ZAIRO SILVA DE ARAÚJO", "DENILSON SILVA DOS SANTOS", "ADSON ANDREY DE MOURA BATISTA"]
     },
     "VOLPACK": {
-        "operador": "MARCOS",
-        "auxiliares": ["CLEITON", "RODRIGO"]
+        "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
+        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO"]
+    },
+    "EVOLUTION 01": {
+        "operador": "JOEDSON DOS SANTOS ARAÚJO",
+        "auxiliares": ["ANDRIALISSON", "MAYK"]
+    },
+    "EVOLUTION 02": {
+        "operador": "WEVERTON BRUNO DE LIMA",
+        "auxiliares": ["LUAN DE LIMA SILVA", "BRENDON HERISON BARBOSA DE OLIVEIRA", "NERISMAR ALVES CARVALHO", "SAMUEL DEYVID SILVA DE LIMA"]
+    },
+    "LINEA 01": {
+        "operador": "ÍTALA SILVA DO NASCIMENTO",
+        "auxiliares": ["JEFFERSON DA SILVA DE OLIVEIRA", "FRANCISCO APOLONIO DA SILVA", "DAVI SANTANA DE OLIVEIRA"]
+    },
+    "LINEA 02": {
+        "operador": "EQUIPE LINEA 02",
+        "auxiliares": ["ALISSON FORTUNATO DA SILVA", "EWERTON GOMES FERREIRA"]
+    },
+    "BOSCH 16": {
+        "operador": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
+        "auxiliares": []
+    },
+    "LEEPACK": {
+        "operador": "JOÃO VICTOR BARBOSA DA SILVA",
+        "auxiliares": []
     }
 }
 
-# Tabela/Planilha de Lotes Automáticos por Produto
+# Base Interna de Produtos e Lotes (Atualizável via Chat)
 PLANILHA_LOTES_PRODUTOS = {
     "CAP. CLASSIC": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
     "CAFÉ COM LEITE TRADICIONAL": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
@@ -59,55 +79,30 @@ PLANILHA_LOTES_PRODUTOS = {
     "CAPP CLASSIC FOOD": {"lote": "1094310", "marca": "3CORAÇÕES", "gramatura": "1000"}
 }
 
-# Mapeamento de Máquinas por Setor
+# Mapeamento Oficial de Máquinas por Setor (Exclusivas do Polivalente)
 MAQUINAS_POR_SETOR = {
-    "Polivalente": ["LEEPACK", "VOLPACK", "EVOLUTION 1", "LINEA 1", "LINEA 2", "STICK 01", "STICK 02", "M028"],
+    "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
     "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
 }
 
 # Dicionário de Códigos de Ocorrências (Código | Motivo)
 CODIGOS_OCORRENCIAS = {
-    "11": "11 | SEM PROGRAMAÇÃO", 
-    "12": "12 | REFEIÇÃO", 
-    "13": "13 | FORA DE TURNO", 
-    "14": "14 | DDS", 
-    "15": "15 | REUNIÃO/TREINAMENTO/EVENTOS",
-    "17": "17 | MANUTENÇÃO PREVENTIVA", 
-    "20": "20 | INÍCIO DE PRODUÇÃO", 
-    "21": "21 | TESTES", 
-    "22": "22 | INVENTÁRIO",
-    "24": "24 | MANUTENÇÃO CORRETIVA ELÉTRICA", 
-    "25": "25 | MANUTENÇÃO CORRETIVA MECÂNICA", 
-    "40": "40 | INÍCIO DE PRODUÇÃO",
-    "41": "41 | FIM DE PRODUÇÃO",
-    "42": "42 | TROCA DE TURNO",
-    "95": "95 | AGUARDANDO MANUTENÇÃO",
-    "97": "97 | SETUP", 
-    "101": "101 | FALTA DE PESSOAL", 
-    "102": "102 | LIMPEZA DE ÁREA", 
-    "105": "105 | LIMPEZA DE EQUIPAMENTO/ÁREA",
-    "107": "107 | TROCA DE BOBINA", 
-    "109": "109 | TROCA DE INSUMOS", 
-    "111": "111 | ATRASO NO INÍCIO DO TURNO",
-    "113": "113 | REGULAGEM DE MÁQUINA", 
-    "117": "117 | AJUSTE DE GUIAS", 
-    "124": "124 | AJUSTE DE DATADOR",
-    "127": "127 | AJUSTE SELADORA 3M", 
-    "128": "128 | ACÚMULO NA ESTEIRA DA LINHA", 
-    "131": "131 | PARADA DA ESTEIRA DE TRANSPORTE",
-    "141": "141 | AJUSTE DE ENCAIXOTADORA", 
-    "155": "155 | TROCA DE MOEGA", 
-    "401": "401 | FALTA DE ENERGIA", 
-    "402": "402 | FALTA DE ÁGUA",
-    "404": "404 | FALTA DE AR COMPRIMIDO", 
-    "407": "407 | FALTA DE PRODUTO", 
-    "408": "408 | PROBLEMA DE REDE/TI",
-    "501": "501 | FALTA DE INSUMO/MATÉRIA PRIMA", 
-    "504": "504 | FALTA DE ESPAÇO - ESTOQUE CHEIO",
-    "601": "601 | PROBLEMA NA EMBALAGEM PRIMÁRIA", 
-    "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA",
-    "604": "604 | DESVIOS DE QUALIDADE", 
+    "11": "11 | SEM PROGRAMAÇÃO", "12": "12 | REFEIÇÃO", "13": "13 | FORA DE TURNO", 
+    "14": "14 | DDS", "15": "15 | REUNIÃO/TREINAMENTO/EVENTOS", "17": "17 | MANUTENÇÃO PREVENTIVA", 
+    "20": "20 | INÍCIO DE PRODUÇÃO", "21": "21 | TESTES", "22": "22 | INVENTÁRIO",
+    "24": "24 | MANUTENÇÃO CORRETIVA ELÉTRICA", "25": "25 | MANUTENÇÃO CORRETIVA MECÂNICA", 
+    "40": "40 | INÍCIO DE PRODUÇÃO", "41": "41 | FIM DE PRODUÇÃO", "42": "42 | TROCA DE TURNO",
+    "95": "95 | AGUARDANDO MANUTENÇÃO", "97": "97 | SETUP", "101": "101 | FALTA DE PESSOAL", 
+    "102": "102 | LIMPEZA DE ÁREA", "105": "105 | LIMPEZA DE EQUIPAMENTO/ÁREA",
+    "107": "107 | TROCA DE BOBINA", "109": "109 | TROCA DE INSUMOS", "111": "111 | ATRASO NO INÍCIO DO TURNO",
+    "113": "113 | REGULAGEM DE MÁQUINA", "117": "117 | AJUSTE DE GUIAS", "124": "124 | AJUSTE DE DATADOR",
+    "127": "127 | AJUSTE SELADORA 3M", "128": "128 | ACÚMULO NA ESTEIRA DA LINHA", "131": "131 | PARADA DA ESTEIRA DE TRANSPORTE",
+    "141": "141 | AJUSTE DE ENCAIXOTADORA", "155": "155 | TROCA DE MOEGA", "401": "401 | FALTA DE ENERGIA", 
+    "402": "402 | FALTA DE ÁGUA", "404": "404 | FALTA DE AR COMPRIMIDO", "407": "407 | FALTA DE PRODUTO", 
+    "408": "408 | PROBLEMA DE REDE/TI", "501": "501 | FALTA DE INSUMO/MATÉRIA PRIMA", 
+    "504": "504 | FALTA DE ESPAÇO - ESTOQUE CHEIO", "601": "601 | PROBLEMA NA EMBALAGEM PRIMÁRIA", 
+    "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA", "604": "604 | DESVIOS DE QUALIDADE", 
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
@@ -184,7 +179,7 @@ if st.session_state.pagina == 1:
     with col_c:
         st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
+            mat_input = st.text_input("Matrícula:", placeholder="32164")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
             area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Gestão"])
             
@@ -245,7 +240,7 @@ elif st.session_state.pagina == 2:
             st.markdown("##### 1. Identificação e Produto")
             
             lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
-            prod_sel_box = st.selectbox("Selecione o Produto (da Planilha Mestra):", lista_produtos)
+            prod_sel_box = st.selectbox("Selecione o Produto:", lista_produtos)
 
             if prod_sel_box != "Digitar Manualmente...":
                 dados_p = PLANILHA_LOTES_PRODUTOS[prod_sel_box]
@@ -292,7 +287,7 @@ elif st.session_state.pagina == 2:
             if "Outros" in aux_marcados:
                 aux_outros_txt = st.text_input("Informe o nome do(s) auxiliar(es) substituto(s) / extra(s):", placeholder="Ex: SILVA, FERREIRA")
 
-            btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA A PLANILHA MESTRA E GERAR RESUMO", use_container_width=True)
+            btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
                 lista_aux_finais = [a for a in aux_marcados if a != "Outros"]
@@ -323,7 +318,7 @@ elif st.session_state.pagina == 2:
                     "operador_sistema": st.session_state.operador_nome
                 }
                 st.session_state.registros_completos.append(registro)
-                st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso na Planilha Mestra!")
+                st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
 
     # FLUXO 2: APONTAMENTO DE MISTURA E PRÉ-MIX
     elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
@@ -340,7 +335,7 @@ elif st.session_state.pagina == 2:
             with col_m3:
                 lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: L1096176")
 
-            btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()} NA PLANILHA MESTRA", use_container_width=True)
+            btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()}", use_container_width=True)
 
             if btn_salvar_m:
                 if prod_m.strip():
@@ -366,7 +361,7 @@ elif st.session_state.pagina == 2:
         st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
         st.caption("Este relatório extrai unicamente: Máquina, Produção Final, Produto, Lote e Ocorrências resumidas.")
 
-        data_f_str = dt_agora.strftime("%d/%m")
+        data_f_str = dt_agora.strftime("%d.%m")
         turno_letra = turno_atual.split()[-1]
 
         regs = st.session_state.registros_completos
@@ -386,8 +381,8 @@ elif st.session_state.pagina == 2:
                 msg_lines.append("")
         else:
             msg_lines.append("*Volpack:* 20.640")
-            msg_lines.append("*Evolution 1:* 10.650\n• 14 | DDS (20 min)\n• 113 | REGULAGEM DE MÁQUINA (15 min)\n")
-            msg_lines.append("*Leepack:* Sem programação\n")
+            msg_lines.append("*Evolution 01:* 10.650\n• 14 | DDS (20 min)\n• 113 | REGULAGEM DE MÁQUINA (15 min)\n")
+            msg_lines.append("*M028:* Sem programação\n")
 
         misturas = [r for r in regs if r["area"] == "Mistura"]
         if misturas:
@@ -410,7 +405,7 @@ elif st.session_state.pagina == 2:
         st.text_area("Copie a mensagem formatada abaixo para enviar no WhatsApp:", value=texto_msg_pronta, height=350)
 
         st.markdown("---")
-        st.subheader("📊 Planilha Mestra Geral (Todos os Dados Detalhados Registrados)")
+        st.subheader("📊 Relatório Geral de Registros Detalhados")
         
         if regs:
             df_mestra = pd.DataFrame(regs)
@@ -418,13 +413,13 @@ elif st.session_state.pagina == 2:
             
             csv = df_mestra.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Baixar Planilha Mestra de Registros (.CSV / Excel)",
+                label="📥 Baixar Relatório de Registros (.CSV / Excel)",
                 data=csv,
-                file_name=f"Planilha_Mestra_Empacotamento_{data_f_str}.csv",
+                file_name=f"Relatorio_Empacotamento_{data_f_str}.csv",
                 mime="text/csv"
             )
         else:
-            st.info("Nenhum registro no banco de dados ainda para o turno atual.")
+            st.info("Nenhum registro no sistema ainda para o turno atual.")
 
 # ---------------------------------------------------------
 # RODAPÉ OFICIAL
