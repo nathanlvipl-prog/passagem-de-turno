@@ -21,7 +21,7 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro Oficial de Colaboradores
+# Cadastro Oficial de Colaboradores (Com Nome Completo)
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
@@ -43,7 +43,7 @@ EQUIPE_FIXA_MAQUINAS = {
     },
     "VOLPACK": {
         "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
-        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO"]
+        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "ANDRIALISSON", "BRENDO", "MAYK"]
     },
     "EVOLUTION 01": {
         "operador": "JOEDSON DOS SANTOS ARAÚJO",
@@ -71,22 +71,21 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Base Interna de Produtos e Lotes (Atualizável via Chat)
+# Base Interna de Produtos e Lotes (Vinculada às OPs)
 PLANILHA_LOTES_PRODUTOS = {
-    "CAP. CLASSIC": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
-    "CAFÉ COM LEITE TRADICIONAL": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
-    "CHOCOLATE QUENTE CREMOSO": {"lote": "1095502", "marca": "SANTA CLARA", "gramatura": "400"},
-    "CAPP CLASSIC FOOD": {"lote": "1094310", "marca": "3CORAÇÕES", "gramatura": "1000"}
+    "CAP. CLASSIC 100G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
+    "CAFÉ COM LEITE TRADICIONAL 200G": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
+    "CHOCOLATE QUENTE CREMOSO 400G": {"lote": "1095502", "marca": "SANTA CLARA", "gramatura": "400"},
+    "CAPP CLASSIC FOOD 1000G": {"lote": "1094310", "marca": "3CORAÇÕES", "gramatura": "1000"},
+    "CAPPUSHINO CLASSIC 200G": {"lote": "1096500", "marca": "3CORAÇÕES", "gramatura": "200"},
 }
 
-# Mapeamento Oficial de Máquinas por Setor (Exclusivas do Polivalente)
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
     "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
 }
 
-# Dicionário de Códigos de Ocorrências (Código | Motivo)
 CODIGOS_OCORRENCIAS = {
     "11": "11 | SEM PROGRAMAÇÃO", "12": "12 | REFEIÇÃO", "13": "13 | FORA DE TURNO", 
     "14": "14 | DDS", "15": "15 | REUNIÃO/TREINAMENTO/EVENTOS", "17": "17 | MANUTENÇÃO PREVENTIVA", 
@@ -112,7 +111,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS
 st.markdown("""
 <style>
     .qualit3c-topbar {
@@ -147,7 +145,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inicialização da Sessão
 if "pagina" not in st.session_state:
     st.session_state.pagina = 1
 if "operador_matricula" not in st.session_state:
@@ -158,7 +155,6 @@ if "setor_selecionado" not in st.session_state:
     st.session_state.setor_selecionado = "Polivalente"
 if "area_atuacao" not in st.session_state:
     st.session_state.area_atuacao = "Envase"
-
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
 
@@ -166,7 +162,7 @@ dt_agora = obter_datetime_br()
 turno_atual = calcular_turno(dt_agora)
 
 # ---------------------------------------------------------
-# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR / GESTÃO
+# PÁGINA 1: IDENTIFICAÇÃO
 # ---------------------------------------------------------
 if st.session_state.pagina == 1:
     st.markdown("""
@@ -189,11 +185,14 @@ if st.session_state.pagina == 1:
                 if not mat_clean:
                     st.error("Informe a matrícula.")
                 elif mat_clean not in CADASTRO_COLABORADORES:
-                    st.error("❌ Matrícula não cadastrada no sistema! Solicite o cadastro ao administrador.")
+                    st.error("❌ Matrícula não cadastrada no sistema!")
                 else:
-                    nome_encontrado = CADASTRO_COLABORADORES[mat_clean]
+                    nome_completo = CADASTRO_COLABORADORES[mat_clean]
+                    # Exibe apenas o primeiro nome na interface do site
+                    primeiro_nome = nome_completo.split()[0]
                     st.session_state.operador_matricula = mat_clean
-                    st.session_state.operador_nome = nome_encontrado
+                    st.session_state.operador_nome = primeiro_nome
+                    st.session_state.operador_nome_completo = nome_completo
                     st.session_state.setor_selecionado = setor_input
                     st.session_state.area_atuacao = area_input
                     st.session_state.pagina = 2
@@ -220,7 +219,6 @@ elif st.session_state.pagina == 2:
 
     maquinas_opcoes = MAQUINAS_POR_SETOR.get(st.session_state.setor_selecionado, [])
 
-    # FLUXO 1: APONTAMENTO DO ENVASE (MÁQUINAS)
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
 
@@ -281,6 +279,7 @@ elif st.session_state.pagina == 2:
             operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
             aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
+            # Todos os auxiliares fixos já vêm selecionados por padrão
             aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=aux_fixos_sugeridos + ["Outros"], default=aux_fixos_sugeridos)
 
             aux_outros_txt = ""
@@ -315,16 +314,14 @@ elif st.session_state.pagina == 2:
                     "desp_primaria": desp_primaria,
                     "operador_linha": operador_linha,
                     "auxiliares": auxiliares_str,
-                    "operador_sistema": st.session_state.operador_nome
+                    "operador_sistema": st.session_state.operador_nome_completo
                 }
                 st.session_state.registros_completos.append(registro)
                 st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
 
-    # FLUXO 2: APONTAMENTO DE MISTURA E PRÉ-MIX
     elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
         tipo_label = st.session_state.area_atuacao
         st.subheader(f"🥣 Apontamento de {tipo_label}")
-        st.caption("Cada batida/produto efetuado é registrado abaixo e enviado diretamente para a base total do banco de dados.")
 
         with st.form("form_mistura_premix"):
             col_m1, col_m2, col_m3 = st.columns(3)
@@ -349,17 +346,15 @@ elif st.session_state.pagina == 2:
                         "lote": lote_m.strip(),
                         "producao": qtd_batidas,
                         "ocorrencias": [],
-                        "operador_sistema": st.session_state.operador_nome
+                        "operador_sistema": st.session_state.operador_nome_completo
                     }
                     st.session_state.registros_completos.append(registro)
                     st.success(f"{tipo_label} do produto '{prod_m}' salva com sucesso!")
                 else:
                     st.error("Informe o nome do produto.")
 
-    # FLUXO 3: GESTÃO (MENSAGEM DO WHATSAPP + EXPORTAÇÃO DA PLANILHA)
     elif st.session_state.area_atuacao == "Gestão":
         st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
-        st.caption("Este relatório extrai unicamente: Máquina, Produção Final, Produto, Lote e Ocorrências resumidas.")
 
         data_f_str = dt_agora.strftime("%d.%m")
         turno_letra = turno_atual.split()[-1]
