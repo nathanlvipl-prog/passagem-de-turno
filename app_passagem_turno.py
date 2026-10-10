@@ -21,17 +21,24 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro Oficial de Colaboradores
+# Cadastro Oficial de Colaboradores (Atualizado)
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
     "32013": "RAFAEL FERREIRA DE OLIVEIRA",
+    "32064": "WEVERTON BRUNO DE LIMA",
+    "21491": "FLÁVIO GIOVANE FERNANDES DA SILVA",
+    "32193": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
+    "22052": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
+    "32037": "ITALO SILVA DO NASCIMENTO",
+    "32308": "JOÃO VICTOR BARBOSA DA SILVA",
+    "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Equipe Fixa Padrão por Máquina/Linha (Exemplo de Cadastro)
+# Equipe Fixa Padrão por Máquina/Linha
 EQUIPE_FIXA_MAQUINAS = {
     "LINEA 1": {
-        "operador": "ÍTALO",
+        "operador": "ITALO SILVA DO NASCIMENTO",
         "auxiliares": ["APOLÔNIO", "JEFERSON", "DAVI"]
     },
     "LEEPACK": {
@@ -44,7 +51,7 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Tabela/Planilha de Lotes Automáticos por Produto (Exemplo Mestra)
+# Tabela/Planilha de Lotes Automáticos por Produto
 PLANILHA_LOTES_PRODUTOS = {
     "CAP. CLASSIC": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
     "CAFÉ COM LEITE TRADICIONAL": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
@@ -177,7 +184,7 @@ if st.session_state.pagina == 1:
     with col_c:
         st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula:", placeholder="32164")
+            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
             area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Gestão"])
             
@@ -222,7 +229,6 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
 
-        # Seleção da Máquina para Carregar Sugestões Fixas de Equipe
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
             maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes)
@@ -231,7 +237,6 @@ elif st.session_state.pagina == 2:
         with c_m3:
             turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
 
-        # Obter Equipe Sugerida para a Máquina Selecionada
         equipe_sugerida = EQUIPE_FIXA_MAQUINAS.get(maq_sel, {"operador": "", "auxiliares": []})
         
         st.markdown("---")
@@ -239,7 +244,6 @@ elif st.session_state.pagina == 2:
         with st.form("form_envase_ficha"):
             st.markdown("##### 1. Identificação e Produto")
             
-            # Seleção do Produto com Auto-preenchimento do Lote
             lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
             prod_sel_box = st.selectbox("Selecione o Produto (da Planilha Mestra):", lista_produtos)
 
@@ -281,7 +285,6 @@ elif st.session_state.pagina == 2:
             st.markdown("##### 👥 Equipe da Linha (Operador e Auxiliares)")
             operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
-            # Caixa para seleção e inclusão de Auxiliares
             aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
             aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=aux_fixos_sugeridos + ["Outros"], default=aux_fixos_sugeridos)
 
@@ -292,7 +295,6 @@ elif st.session_state.pagina == 2:
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA A PLANILHA MESTRA E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
-                # Consolidação dos auxiliares
                 lista_aux_finais = [a for a in aux_marcados if a != "Outros"]
                 if aux_outros_txt.strip():
                     lista_aux_finais.append(aux_outros_txt.strip())
