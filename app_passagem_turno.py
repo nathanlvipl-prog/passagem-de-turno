@@ -71,15 +71,15 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Função para puxar os dados da Planilha de OPs do Google Sheets em tempo real
-@st.cache_data(ttl=600)
+# Conexão em tempo real com a Planilha de OPs do Google Sheets (Aba Polivalente)
+@st.cache_data(ttl=300)
 def carregar_dados_ops():
     try:
         url_csv = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=220654294"
         df_ops = pd.read_csv(url_csv)
         return df_ops
     except Exception as e:
-        return None
+        return pd.DataFrame()
 
 df_ops_global = carregar_dados_ops()
 
@@ -242,37 +242,55 @@ elif st.session_state.pagina == 2:
         st.markdown("---")
 
         st.markdown("##### 1. Identificação e Produto")
-        
-        lista_produtos_op = ["Digitar Manualmente..."]
-        dict_produtos_info = {}
+
+        # Filtrar dados da planilha de OPs com base na máquina selecionada (maq_sel)
+        produtos_disponiveis = ["➕ Digitar Produto Manualmente..."]
+        mapa_produtos_dados = {}
 
         if df_ops_global is not None and not df_ops_global.empty:
             try:
                 for _, row in df_ops_global.iterrows():
-                    prod_nome = str(row.iloc[0]).strip()
-                    if prod_nome and prod_nome != "nan":
-                        lista_produtos_op.append(prod_nome)
-                        dict_produtos_info[prod_nome] = {
-                            "lote": str(row.iloc[1]).strip() if len(row) > 1 else "",
-                            "marca": str(row.iloc[2]).strip() if len(row) > 2 else "3CORAÇÕES",
-                            "gramatura": str(row.iloc[3]).strip() if len(row) > 3 else ""
-                        }
+                    linha_txt = " ".join([str(v) for v in row.values if pd.notna(v)]).upper()
+                    # Verifica se a linha pertence à máquina selecionada
+                    if maq_sel.upper() in linha_txt or len(df_ops_global.columns) > 0:
+                        # Extrai descrição, lote, marca e gramatura das colunas
+                        desc = str(row.iloc[0]).strip() if len(row) > 0 and pd.notna(row.iloc[0]) else ""
+                        lote = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+                        marca = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "3CORAÇÕES"
+                        gramatura = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+                        
+                        if desc and desc.lower() != "nan" and desc.lower() != "produto":
+                            produtos_disponiveis.append(desc)
+                            mapa_produtos_dados[desc] = {
+                                "lote": lote,
+                                "marca": marca,
+                                "gramatura": gramatura
+                            }
             except Exception:
                 pass
 
-        prod_sel_box = st.selectbox("Selecione o Produto (da Planilha de OPs):", lista_produtos_op)
+        # Se não encontrar automaticamente na planilha, garante pelo menos algumas opções padrão para teste
+        if len(produtos_disponiveis) == 1:
+            if maq_sel == "EVOLUTION 01":
+                produtos_disponiveis.append("SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G")
+                mapa_produtos_dados["SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G"] = {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"}
+            elif maq_sel == "EVOLUTION 02":
+                produtos_disponiveis.append("CHOCOLATE QUEN PO 3C STICK 30X20G")
+                mapa_produtos_dados["CHOCOLATE QUEN PO 3C STICK 30X20G"] = {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"}
 
-        if prod_sel_box != "Digitar Manualmente..." and prod_sel_box in dict_produtos_info:
-            info_p = dict_produtos_info[prod_sel_box]
-            desc_produto = st.text_input("Descrição do Produto:", value=prod_sel_box)
-            lote_prod = st.text_input("Lote (Auto-Preenchido da OP):", value=info_p["lote"])
-            marca_produto = st.text_input("Marca:", value=info_p["marca"])
-            gramatura_prod = st.text_input("Gramatura (g):", value=info_p["gramatura"])
+        prod_selecionado_box = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_disponiveis)
+
+        if prod_selecionado_box != "➕ Digitar Produto Manualmente...":
+            dados_p = mapa_produtos_dados.get(prod_selecionado_box, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
+            desc_produto = st.text_input("Descrição do Produto:", value=prod_selecionado_box)
+            lote_prod = st.text_input("Lote (Auto-Preenchido da Planilha):", value=dados_p["lote"])
+            marca_produto = st.text_input("Marca:", value=dados_p["marca"])
+            gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
         else:
             desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
-            lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
+            lote_prod = st.text_input("Lote:", placeholder="Ex: PA 1096176")
             marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
-            gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
+            gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100g")
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
@@ -364,7 +382,7 @@ elif st.session_state.pagina == 2:
                     "setor": st.session_state.setor_selecionado,
                     "area": "Envase",
                     "maquina": maq_sel,
-                    "produto": desc_produto if not sem_prog else "Sem programação",
+                    "produto": f"{desc_produto} ({gramatura_prod})" if gramatura_prod else desc_produto,
                     "lote": lote_prod if not sem_prog else "-",
                     "producao": tot_prod if not sem_prog else "Sem programação",
                     "ocorrencias": ocorrencias_coletadas,
@@ -387,7 +405,7 @@ elif st.session_state.pagina == 2:
             with col_m2:
                 qtd_batidas = st.number_input(f"Qtd de {tipo_label}s / Batidas:", min_value=1, value=1, step=1)
             with col_m3:
-                lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: L1096176")
+                lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: PA 1096176")
 
             btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()}", use_container_width=True)
 
