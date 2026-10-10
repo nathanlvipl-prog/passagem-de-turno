@@ -1,4 +1,3 @@
-
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
@@ -22,7 +21,7 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro Oficial de Colaboradores (Com Acesso Restrito)
+# Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
@@ -36,20 +35,49 @@ MAQUINAS_POR_SETOR = {
     "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
 }
 
-# Dicionário de Códigos de Ocorrências
+# Dicionário de Códigos de Ocorrências (Formato: Código | Motivo)
 CODIGOS_OCORRENCIAS = {
-    "11": "SEM PROGRAMAÇÃO", "12": "REFEIÇÃO", "14": "DDS", "15": "REUNIÃO/TREINAMENTOS/FESTAS",
-    "17": "MANUTENÇÃO PREVENTIVA", "20": "INÍCIO/FIM DE PRODUÇÃO", "21": "TESTES", "22": "INVENTÁRIO",
-    "24": "MANUTENÇÃO CORRETIVA ELÉTRICA", "25": "MANUTENÇÃO CORRETIVA MECÂNICA", "95": "AGUARDANDO MANUTENÇÃO",
-    "97": "SETUP", "101": "FALTA DE PESSOAL", "102": "LIMPEZA DE ÁREA", "105": "LIMPEZA DE EQUIPAMENTO/ÁREA",
-    "107": "TROCA DE BOBINA", "109": "TROCA DE INSUMOS", "111": "ATRASO NO INÍCIO DO TURNO",
-    "113": "REGULAGEM DE MÁQUINA", "117": "AJUSTE DE GUIAS", "124": "AJUSTE DE DATADOR",
-    "127": "AJUSTE SELADORA 3M", "128": "ACÚMULO NA ESTEIRA DA LINHA", "131": "PARADA DA ESTEIRA DE TRANSPORTE",
-    "141": "AJUSTE DE ENCAIXOTADORA", "155": "TROCA DE MOEGA", "401": "FALTA DE ENERGIA", "402": "FALTA DE ÁGUA",
-    "404": "FALTA DE AR COMPRIMIDO", "407": "FALTA DE PRODUTO", "408": "PROBLEMA DE REDE/TI",
-    "501": "FALTA DE INSUMO/MATÉRIA PRIMA", "504": "FALTA DE ESPAÇO - ESTOQUE CHEIO",
-    "601": "PROBLEMA NA EMBALAGEM PRIMÁRIA", "603": "PROBLEMA NA EMBALAGEM SECUNDÁRIA",
-    "604": "DESVIOS DE QUALIDADE", "608": "RETRABALHO DE PRODUTO NÃO CONFORME"
+    "11": "11 | SEM PROGRAMAÇÃO", 
+    "12": "12 | REFEIÇÃO", 
+    "13": "13 | FORA DE TURNO", 
+    "14": "14 | DDS", 
+    "15": "15 | REUNIÃO/TREINAMENTO/EVENTOS",
+    "17": "17 | MANUTENÇÃO PREVENTIVA", 
+    "20": "20 | INÍCIO DE PRODUÇÃO", 
+    "21": "21 | TESTES", 
+    "22": "22 | INVENTÁRIO",
+    "24": "24 | MANUTENÇÃO CORRETIVA ELÉTRICA", 
+    "25": "25 | MANUTENÇÃO CORRETIVA MECÂNICA", 
+    "40": "40 | INÍCIO DE PRODUÇÃO",
+    "41": "41 | FIM DE PRODUÇÃO",
+    "42": "42 | TROCA DE TURNO",
+    "95": "95 | AGUARDANDO MANUTENÇÃO",
+    "97": "97 | SETUP", 
+    "101": "101 | FALTA DE PESSOAL", 
+    "102": "102 | LIMPEZA DE ÁREA", 
+    "105": "105 | LIMPEZA DE EQUIPAMENTO/ÁREA",
+    "107": "107 | TROCA DE BOBINA", 
+    "109": "109 | TROCA DE INSUMOS", 
+    "111": "111 | ATRASO NO INÍCIO DO TURNO",
+    "113": "113 | REGULAGEM DE MÁQUINA", 
+    "117": "117 | AJUSTE DE GUIAS", 
+    "124": "124 | AJUSTE DE DATADOR",
+    "127": "127 | AJUSTE SELADORA 3M", 
+    "128": "128 | ACÚMULO NA ESTEIRA DA LINHA", 
+    "131": "131 | PARADA DA ESTEIRA DE TRANSPORTE",
+    "141": "141 | AJUSTE DE ENCAIXOTADORA", 
+    "155": "155 | TROCA DE MOEGA", 
+    "401": "401 | FALTA DE ENERGIA", 
+    "402": "402 | FALTA DE ÁGUA",
+    "404": "404 | FALTA DE AR COMPRIMIDO", 
+    "407": "407 | FALTA DE PRODUTO", 
+    "408": "408 | PROBLEMA DE REDE/TI",
+    "501": "501 | FALTA DE INSUMO/MATÉRIA PRIMA", 
+    "504": "504 | FALTA DE ESPAÇO - ESTOQUE CHEIO",
+    "601": "601 | PROBLEMA NA EMBALAGEM PRIMÁRIA", 
+    "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA",
+    "604": "604 | DESVIOS DE QUALIDADE", 
+    "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
 st.set_page_config(
@@ -125,7 +153,7 @@ if st.session_state.pagina == 1:
     with col_c:
         st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
+            mat_input = st.text_input("Matrícula:", placeholder="32164")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
             area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Gestão"])
             
@@ -169,13 +197,14 @@ elif st.session_state.pagina == 2:
     # FLUXO 1: APONTAMENTO DO ENVASE (MÁQUINAS)
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
-        st.caption("Ao clicar em gravar, todos os dados completos irão para a Planilha Mestra. O resumo irá para o relatório do WhatsApp.")
 
         with st.form("form_envase_ficha"):
             st.markdown("##### 1. Identificação e Produto")
             c1, c2, c3, c4 = st.columns(4)
             with c1: maq_sel = st.selectbox("Máquina:", maquinas_opcoes)
-            with c2: data_prod = st.date_input("Data:", dt_agora)
+            with c2: 
+                # Exibição da data no formato brasileiro dd/mm/aaaa
+                data_prod = st.date_input("Data (dd/mm/aaaa):", dt_agora, format="DD/MM/YYYY")
             with c3: turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
             with c4: lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
 
@@ -190,9 +219,18 @@ elif st.session_state.pagina == 2:
             with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
             with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
-            ocor_raw = st.text_area("Ocorrências / Regulagens (uma por linha):", placeholder="Ex:\nTroca de bobina\nRegulagem operacional\nAcúmulo na esteira", height=80)
+            st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
+            lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
+            
+            oc1, min1 = st.columns([3, 1])
+            with oc1: sel_oc1 = st.selectbox("Ocorrência 1:", lista_opcoes_oc, index=0)
+            with min1: val_min1 = st.number_input("Min 1:", value=0)
 
-            st.markdown("##### 3. Perdas e Equipe (Salvos na Planilha Mestra)")
+            oc2, min2 = st.columns([3, 1])
+            with oc2: sel_oc2 = st.selectbox("Ocorrência 2:", lista_opcoes_oc, index=0)
+            with min2: val_min2 = st.number_input("Min 2:", value=0)
+
+            st.markdown("##### 3. Perdas e Equipe")
             d1, d2, d3 = st.columns(3)
             with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
             with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
@@ -203,6 +241,12 @@ elif st.session_state.pagina == 2:
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA A PLANILHA MESTRA E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
+                lista_ocs_formatadas = []
+                if sel_oc1 != "Nenhuma" and val_min1 > 0:
+                    lista_ocs_formatadas.append(f"{sel_oc1} ({val_min1} min)")
+                if sel_oc2 != "Nenhuma" and val_min2 > 0:
+                    lista_ocs_formatadas.append(f"{sel_oc2} ({val_min2} min)")
+
                 registro = {
                     "data": data_prod.strftime("%d/%m/%Y"),
                     "turno": turno_sel,
@@ -212,7 +256,7 @@ elif st.session_state.pagina == 2:
                     "produto": desc_produto if not sem_prog else "Sem programação",
                     "lote": lote_prod if not sem_prog else "-",
                     "producao": tot_prod if not sem_prog else "Sem programação",
-                    "ocorrencias": [o.strip() for o in ocor_raw.split("\n") if o.strip()],
+                    "ocorrencias": lista_ocs_formatadas,
                     "desp_primaria": desp_primaria,
                     "auxiliar": aux_empacotamento,
                     "operador": st.session_state.operador_nome
@@ -261,7 +305,7 @@ elif st.session_state.pagina == 2:
         st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
         st.caption("Este relatório extrai unicamente: Máquina, Produção Final, Produto, Lote e Ocorrências resumidas.")
 
-        data_f_str = dt_agora.strftime("%d.%m")
+        data_f_str = dt_agora.strftime("%d/%m")
         turno_letra = turno_atual.split()[-1]
 
         regs = st.session_state.registros_completos
@@ -281,7 +325,7 @@ elif st.session_state.pagina == 2:
                 msg_lines.append("")
         else:
             msg_lines.append("*Volpack:* 20.640")
-            msg_lines.append("*Evolution 1:* 10.650\n• Troca de bobina\n• Regulagem de embalagem\n")
+            msg_lines.append("*Evolution 1:* 10.650\n• 14 | DDS (20 min)\n• 113 | REGULAGEM DE MÁQUINA (15 min)\n")
             msg_lines.append("*Leepack:* Sem programação\n")
 
         misturas = [r for r in regs if r["area"] == "Mistura"]
