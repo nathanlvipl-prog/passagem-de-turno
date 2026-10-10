@@ -72,7 +72,7 @@ EQUIPE_FIXA_MAQUINAS = {
 }
 
 # Função para puxar os dados da Planilha de OPs do Google Sheets em tempo real
-@st.cache_data(ttl=600) # Atualiza o cache a cada 10 minutos
+@st.cache_data(ttl=600)
 def carregar_dados_ops():
     try:
         url_csv = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=220654294"
@@ -109,7 +109,7 @@ CODIGOS_OCORRENCIAS = {
 }
 
 st.set_page_config(
-    page_title="Qualit3c | Check-lists Produção",
+    page_title="Check-lists Produção",
     page_icon="📋",
     layout="wide"
 )
@@ -175,7 +175,7 @@ turno_atual = calcular_turno(dt_agora)
 if st.session_state.pagina == 1:
     st.markdown("""
     <div class="qualit3c-topbar">
-        <div class="qualit3c-title">🏭 Qualit3c — Check-lists Produção (PRO.DC1416)</div>
+        <div class="qualit3c-title">🏭 Check-lists Produção (PRO.DC1416)</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -241,19 +241,14 @@ elif st.session_state.pagina == 2:
         
         st.markdown("---")
 
-        # BLOCO 1: IDENTIFICAÇÃO DO PRODUTO E METAS (Puxando da Planilha de OPs)
         st.markdown("##### 1. Identificação e Produto")
         
         lista_produtos_op = ["Digitar Manualmente..."]
         dict_produtos_info = {}
 
         if df_ops_global is not None and not df_ops_global.empty:
-            # Tenta identificar automaticamente as colunas da planilha
-            colunas_possiveis = [c for c in df_ops_global.columns]
-            # Vamos assumir que a primeira coluna ou coluna de descrição esteja disponível
             try:
                 for _, row in df_ops_global.iterrows():
-                    # Pega a primeira coluna como descrição do produto (ajuste conforme o cabeçalho real da sua planilha)
                     prod_nome = str(row.iloc[0]).strip()
                     if prod_nome and prod_nome != "nan":
                         lista_produtos_op.append(prod_nome)
@@ -286,7 +281,6 @@ elif st.session_state.pagina == 2:
         with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
         st.markdown("---")
-        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS
         st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
 
         lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
@@ -331,7 +325,6 @@ elif st.session_state.pagina == 2:
 
         st.markdown("---")
 
-        # BLOCO 3: PERDAS, EQUIPE E SALVAMENTO
         with st.form("form_envase_final"):
             st.markdown("##### 3. Perdas e Equipe da Linha")
             d1, d2, d3 = st.columns(3)
@@ -485,6 +478,6 @@ elif st.session_state.pagina == 2:
 # ---------------------------------------------------------
 st.markdown("""
 <div class="qualit3c-footer">
-    SISTEMA QUALIT3C — CHECK-LISTS PRODUÇÃO | PRO.DC1416 - R00
+    CHECK-LISTS PRODUÇÃO | PRO.DC1416 - R00
 </div>
 """, unsafe_allow_html=True)
