@@ -96,7 +96,6 @@ CODIGOS_OCORRENCIAS = {
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
-# Conexão oficial com a planilha Google Sheets (lendo estritamente como string com dtype=str)[span_4](start_span)[span_4](end_span)
 GSHEET_OP_POLI_URL = "https://docs.google.com/spreadsheets/d/1YScgt0owZjmTWMKnlcwya1nPQKt0u341uPSb4U82_-E/export?format=csv&gid=220654294"
 
 @st.cache_data(ttl=60)
@@ -229,7 +228,6 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
-        # Expander para visualizar a tabela de OPs ao vivo (igual ao outro sistema)[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)
         with st.expander("📋 Tabela de Referência de OPs (Google Sheets)"):
             if dados_op_poli is not None:
                 st.dataframe(dados_op_poli, use_container_width=True)
@@ -249,22 +247,27 @@ elif st.session_state.pagina == 2:
         st.markdown("---")
         st.markdown("##### 1. Identificação e Produto")
 
-        # Mapeamento inteligente extraindo da planilha carregada
         produtos_lista = []
         mapa_produtos = {}
 
         if dados_op_poli is not None and not dados_op_poli.empty:
             try:
                 for _, row in dados_op_poli.iterrows():
-                    linha_texto = " ".join([str(v) for v in row.values if pd.notna(v)]).upper()
-                    # Verifica se a linha corresponde à máquina selecionada ou se traz dados do produto
                     if len(row) > 0 and pd.notna(row.iloc[0]):
                         desc = str(row.iloc[0]).strip()
+                        # Correção para o item da Evolution 01
+                        if "SUPLEMENTO ALIM POWER NET AÇAÍ" in desc.upper():
+                            desc = "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G"
+
                         if desc and desc.lower() != "nan" and desc.lower() != "produto":
                             lote_val = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
                             marca_val = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "3CORAÇÕES"
                             gram_val = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
                             
+                            # Ajuste de gramatura 9g se for o suplemento
+                            if "SUPLEMENTO ALIM POWER NET AÇAÍ" in desc.upper():
+                                gram_val = "9g"
+
                             if desc not in produtos_lista:
                                 produtos_lista.append(desc)
                                 mapa_produtos[desc] = {
@@ -275,22 +278,20 @@ elif st.session_state.pagina == 2:
             except Exception:
                 pass
 
-        # Fallback de segurança caso a planilha esteja vazia na leitura inicial
         if not produtos_lista:
             produtos_lista = [
-                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G",
+                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G",
                 "CHOCOLATE QUEN PO 3C STICK 30X20G",
                 "CAP. CLASSIC 200G"
             ]
             mapa_produtos = {
-                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G": {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
+                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G": {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
                 "CHOCOLATE QUEN PO 3C STICK 30X20G": {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
                 "CAP. CLASSIC 200G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "200g"}
             }
 
         prod_escolhido = st.selectbox("Selecione o Produto da Planilha de OPs:", produtos_lista)
 
-        # Preenchimento automático baseado na seleção
         dados_selecionados = mapa_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
         
         desc_produto = st.text_input("Descrição do Produto:", value=prod_escolhido)
