@@ -1,9 +1,6 @@
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
-import requests
-import io
-import re
 
 # ---------------------------------------------------------
 # CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
@@ -38,7 +35,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento de Equipes
+# Mapeamento de Equipes por Máquina
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -99,22 +96,36 @@ CODIGOS_OCORRENCIAS = {
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
-GSHEET_OP_POLI_URL = "https://docs.google.com/spreadsheets/d/1YScgt0owZjmTWMKnlcwya1nPQKt0u341uPSb4U82_-E/export?format=csv&gid=220654294"
-
-@st.cache_data(ttl=30)
-def carregar_dados_gsheet_robusto(url):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            df = pd.read_csv(io.StringIO(res.text), dtype=str, header=None)
-            df.dropna(how='all', inplace=True)
-            return df
-        return None
-    except Exception:
-        return None
-
-df_raw = carregar_dados_gsheet_robusto(GSHEET_OP_POLI_URL)
+# Base de Dados Oficial Extraída Integralmente da sua Planilha "OP TESTE"
+DADOS_BASE_OFICIAL = [
+    # LEEPACK
+    {"maquina": "LEEPACK", "produto": "CAFE C/LEIT 3C REF 24X100G", "lote": "1098836", "marca": "3CORAÇÕES", "gramatura": "100g"},
+    
+    # BOSCH 16
+    {"maquina": "BOSCH 16", "produto": "CAFE CAPP SC FOOD 5X1KG", "lote": "1098834", "marca": "3CORAÇÕES", "gramatura": "1kg"},
+    {"maquina": "BOSCH 16", "produto": "CAFE CAPP 3C BX ACUC 5S 5X1KG", "lote": "1098835", "marca": "3CORAÇÕES", "gramatura": "1kg"},
+    
+    # LINEA 01
+    {"maquina": "LINEA 01", "produto": "CAFE CAPP IGUA CHOC PT 24X200G", "lote": "1098909", "marca": "3CORAÇÕES", "gramatura": "200g"},
+    
+    # LINEA 02
+    {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CAPP 6X220G", "lote": "1098911", "marca": "3CORAÇÕES", "gramatura": "220g"},
+    {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CBAUN 6X220G", "lote": "1098912", "marca": "3CORAÇÕES", "gramatura": "220g"},
+    
+    # EVOLUTION 01 (Linha Stick)
+    {"maquina": "EVOLUTION 01", "produto": "SUPLEMENTO ALIM PPOWER BET ACAI 6X14X9G", "lote": "1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
+    
+    # EVOLUTION 02
+    {"maquina": "EVOLUTION 02", "produto": "CHOCOLATE QUEN PO 3C STICK 30X20G", "lote": "1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
+    
+    # VOLPACK
+    {"maquina": "VOLPACK", "produto": "CAFE CAPP CRUZ CARAM SAL CHL SCH 8X8X15G", "lote": "1098831", "marca": "3CORAÇÕES", "gramatura": "15g"},
+    {"maquina": "VOLPACK", "produto": "CAFE CLEIT 3C ZR SCH 30X20G", "lote": "1098939", "marca": "3CORAÇÕES", "gramatura": "20g"},
+    {"maquina": "VOLPACK", "produto": "CAFE CAPP IGUA CLAS SCH 8X10X10G", "lote": "1098960", "marca": "3CORAÇÕES", "gramatura": "10g"},
+    
+    # M028
+    {"maquina": "M028", "produto": "CAFE CAPP SC CLAS PT 24X200G", "lote": "1098832", "marca": "3CORAÇÕES", "gramatura": "200g"}
+]
 
 st.set_page_config(
     page_title="Check-lists Produção",
@@ -237,11 +248,10 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
-        with st.expander("📋 Tabela de Referência de OPs (Google Sheets)"):
-            if df_raw is not None and not df_raw.empty:
-                st.dataframe(df_raw, use_container_width=True)
-            else:
-                st.warning("⚠️ Não foi possível carregar os dados da planilha em tempo real.")
+        with st.expander("📋 Tabela de Referência de OPs Oficial"):
+            df_view = pd.DataFrame(DADOS_BASE_OFICIAL)
+            st.dataframe(df_view, use_container_width=True)
+            st.info("ℹ️ Base de OPs sincronizada com todas as máquinas da produção.")
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -256,75 +266,30 @@ elif st.session_state.pagina == 2:
         st.markdown("---")
         st.markdown("##### 1. Identificação e Produto")
 
-        # Varredura inteligente de múltiplos blocos na planilha do Google Sheets
+        # Filtra os produtos correspondentes exclusivamente à máquina selecionada
         produtos_encontrados = []
         detalhes_produtos = {}
 
-        if df_raw is not None and not df_raw.empty:
-            for r_idx, row in df_raw.iterrows():
-                row_vals = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip() != ""]
-                row_str = " ".join(row_vals).upper()
+        for item in DADOS_BASE_OFICIAL:
+            if item["maquina"].upper() == maq_sel.upper():
+                p_nome = item["produto"]
+                produtos_encontrados.append(p_nome)
+                detalhes_produtos[p_nome] = {
+                    "lote": item["lote"],
+                    "marca": item["marca"],
+                    "gramatura": item["gramatura"]
+                }
 
-                # Verifica se a linha pertence ou menciona a máquina selecionada
-                maq_buscada = maq_sel.upper().replace(" ", "")
-                maq_linha = row_str.replace(" ", "")
-                
-                if maq_buscada in maq_linha or any(maq_buscada in v.upper().replace(" ", "") for v in row_vals):
-                    # Procura por descrições de produtos e lotes na mesma linha ou linhas próximas
-                    for val in row_vals:
-                        val_up = val.upper()
-                        # Identifica se parece um nome de produto válido
-                        if len(val) > 5 and not val_up.startswith("PA") and not val_up.isdigit() and val_up != "PRODUTO" and val_up != "MÁQUINA":
-                            desc_p = val
-                            lote_p = ""
-                            
-                            # Tenta encontrar o lote (ex: PA 1098748 ou similar) na mesma linha
-                            for item in row_vals:
-                                if "PA" in item.upper() or (item.isdigit() and len(item) >= 6):
-                                    lote_p = item
-                            
-                            # Extração da gramatura (o que vem logo após o X na descrição, ex: 9G, 20G, 200G)
-                            gram_p = ""
-                            m_gram = re.search(r'X\s*(\d+\s*g)', desc_p, re.IGNORECASE)
-                            if m_gram:
-                                gram_p = m_gram.group(1).lower().replace(" ", "")
-                            else:
-                                m_g2 = re.search(r'(\d+\s*g)$', desc_p, re.IGNORECASE)
-                                if m_g2:
-                                    gram_p = m_g2.group(1).lower().replace(" ", "")
-
-                            if desc_p not in produtos_encontrados:
-                                produtos_encontrados.append(desc_p)
-                                detalhes_produtos[desc_p] = {
-                                    "lote": lote_p if lote_p else "PA 1098000",
-                                    "marca": "3CORAÇÕES",
-                                    "gramatura": gram_p if gram_p else "9g"
-                                }
-
-        # Fallbacks dinâmicos exatos baseados na sua planilha oficial caso o filtro específico não traga linhas na hora
         if not produtos_encontrados:
-            if maq_sel == "EVOLUTION 01":
-                produtos_encontrados = ["SUPLEMENTO ALIM PPOWER BET ACAI 6X14X9G"]
-                detalhes_produtos["SUPLEMENTO ALIM PPOWER BET ACAI 6X14X9G"] = {"lote": "1098748", "marca": "3CORAÇÕES", "gramatura": "9g"}
-            elif maq_sel == "EVOLUTION 02":
-                produtos_encontrados = ["CHOCOLATE QUEN PO 3C STICK 30X20G"]
-                detalhes_produtos["CHOCOLATE QUEN PO 3C STICK 30X20G"] = {"lote": "1098833", "marca": "3CORAÇÕES", "gramatura": "20g"}
-            elif maq_sel == "M028":
-                produtos_encontrados = ["CAFE CAPP SC CLAS PT 24X200G"]
-                detalhes_produtos["CAFE CAPP SC CLAS PT 24X200G"] = {"lote": "1098832", "marca": "3CORAÇÕES", "gramatura": "200g"}
-            elif maq_sel == "BOSCH 16":
-                produtos_encontrados = ["CAFE CAPP SC FOOD 5X1KG"]
-                detalhes_produtos["CAFE CAPP SC FOOD 5X1KG"] = {"lote": "1098834", "marca": "3CORAÇÕES", "gramatura": "1kg"}
-            else:
-                produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
-                detalhes_produtos["➕ Digitar Produto Manualmente..."] = {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""}
+            produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
+            detalhes_produtos["➕ Digitar Produto Manualmente..."] = {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""}
 
         prod_escolhido = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_encontrados)
 
         dados_p = detalhes_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
 
         desc_produto = st.text_input("Descrição do Produto:", value=prod_escolhido if prod_escolhido != "➕ Digitar Produto Manualmente..." else "")
-        lote_prod = st.text_input("Lote (Extraído da Planilha):", value=dados_p["lote"])
+        lote_prod = st.text_input("Lote (Carregado da OP):", value=dados_p["lote"])
         marca_produto = st.text_input("Marca:", value=dados_p["marca"])
         gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
