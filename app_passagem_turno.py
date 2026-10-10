@@ -71,18 +71,6 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Conexão em tempo real com a Planilha de OPs do Google Sheets (Aba Polivalente)
-@st.cache_data(ttl=300)
-def carregar_dados_ops():
-    try:
-        url_csv = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=220654294"
-        df_ops = pd.read_csv(url_csv)
-        return df_ops
-    except Exception as e:
-        return pd.DataFrame()
-
-df_ops_global = carregar_dados_ops()
-
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
@@ -107,6 +95,18 @@ CODIGOS_OCORRENCIAS = {
     "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA", "604": "604 | DESVIOS DE QUALIDADE", 
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
+
+# Conexão oficial com a planilha Google Sheets (lendo estritamente como string com dtype=str)[span_4](start_span)[span_4](end_span)
+GSHEET_OP_POLI_URL = "https://docs.google.com/spreadsheets/d/1YScgt0owZjmTWMKnlcwya1nPQKt0u341uPSb4U82_-E/export?format=csv&gid=220654294"
+
+@st.cache_data(ttl=60)
+def carregar_dados_gsheet(url):
+    try:
+        return pd.read_csv(url, dtype=str)
+    except Exception:
+        return None
+
+dados_op_poli = carregar_dados_gsheet(GSHEET_OP_POLI_URL)
 
 st.set_page_config(
     page_title="Check-lists Produção",
@@ -229,6 +229,13 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
+        # Expander para visualizar a tabela de OPs ao vivo (igual ao outro sistema)[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)
+        with st.expander("📋 Tabela de Referência de OPs (Google Sheets)"):
+            if dados_op_poli is not None:
+                st.dataframe(dados_op_poli, use_container_width=True)
+            else:
+                st.info("Carregando dados da planilha...")
+
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
             maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes)
@@ -240,57 +247,56 @@ elif st.session_state.pagina == 2:
         equipe_sugerida = EQUIPE_FIXA_MAQUINAS.get(maq_sel, {"operador": "", "auxiliares": []})
         
         st.markdown("---")
-
         st.markdown("##### 1. Identificação e Produto")
 
-        # Filtrar dados da planilha de OPs com base na máquina selecionada (maq_sel)
-        produtos_disponiveis = ["➕ Digitar Produto Manualmente..."]
-        mapa_produtos_dados = {}
+        # Mapeamento inteligente extraindo da planilha carregada
+        produtos_lista = []
+        mapa_produtos = {}
 
-        if df_ops_global is not None and not df_ops_global.empty:
+        if dados_op_poli is not None and not dados_op_poli.empty:
             try:
-                for _, row in df_ops_global.iterrows():
-                    linha_txt = " ".join([str(v) for v in row.values if pd.notna(v)]).upper()
-                    # Verifica se a linha pertence à máquina selecionada
-                    if maq_sel.upper() in linha_txt or len(df_ops_global.columns) > 0:
-                        # Extrai descrição, lote, marca e gramatura das colunas
-                        desc = str(row.iloc[0]).strip() if len(row) > 0 and pd.notna(row.iloc[0]) else ""
-                        lote = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
-                        marca = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "3CORAÇÕES"
-                        gramatura = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
-                        
+                for _, row in dados_op_poli.iterrows():
+                    linha_texto = " ".join([str(v) for v in row.values if pd.notna(v)]).upper()
+                    # Verifica se a linha corresponde à máquina selecionada ou se traz dados do produto
+                    if len(row) > 0 and pd.notna(row.iloc[0]):
+                        desc = str(row.iloc[0]).strip()
                         if desc and desc.lower() != "nan" and desc.lower() != "produto":
-                            produtos_disponiveis.append(desc)
-                            mapa_produtos_dados[desc] = {
-                                "lote": lote,
-                                "marca": marca,
-                                "gramatura": gramatura
-                            }
+                            lote_val = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+                            marca_val = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "3CORAÇÕES"
+                            gram_val = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+                            
+                            if desc not in produtos_lista:
+                                produtos_lista.append(desc)
+                                mapa_produtos[desc] = {
+                                    "lote": lote_val,
+                                    "marca": marca_val,
+                                    "gramatura": gram_val
+                                }
             except Exception:
                 pass
 
-        # Se não encontrar automaticamente na planilha, garante pelo menos algumas opções padrão para teste
-        if len(produtos_disponiveis) == 1:
-            if maq_sel == "EVOLUTION 01":
-                produtos_disponiveis.append("SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G")
-                mapa_produtos_dados["SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G"] = {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"}
-            elif maq_sel == "EVOLUTION 02":
-                produtos_disponiveis.append("CHOCOLATE QUEN PO 3C STICK 30X20G")
-                mapa_produtos_dados["CHOCOLATE QUEN PO 3C STICK 30X20G"] = {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"}
+        # Fallback de segurança caso a planilha esteja vazia na leitura inicial
+        if not produtos_lista:
+            produtos_lista = [
+                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G",
+                "CHOCOLATE QUEN PO 3C STICK 30X20G",
+                "CAP. CLASSIC 200G"
+            ]
+            mapa_produtos = {
+                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X16G": {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
+                "CHOCOLATE QUEN PO 3C STICK 30X20G": {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
+                "CAP. CLASSIC 200G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "200g"}
+            }
 
-        prod_selecionado_box = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_disponiveis)
+        prod_escolhido = st.selectbox("Selecione o Produto da Planilha de OPs:", produtos_lista)
 
-        if prod_selecionado_box != "➕ Digitar Produto Manualmente...":
-            dados_p = mapa_produtos_dados.get(prod_selecionado_box, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
-            desc_produto = st.text_input("Descrição do Produto:", value=prod_selecionado_box)
-            lote_prod = st.text_input("Lote (Auto-Preenchido da Planilha):", value=dados_p["lote"])
-            marca_produto = st.text_input("Marca:", value=dados_p["marca"])
-            gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
-        else:
-            desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
-            lote_prod = st.text_input("Lote:", placeholder="Ex: PA 1096176")
-            marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
-            gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100g")
+        # Preenchimento automático baseado na seleção
+        dados_selecionados = mapa_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
+        
+        desc_produto = st.text_input("Descrição do Produto:", value=prod_escolhido)
+        lote_prod = st.text_input("Lote (Carregado da Planilha):", value=dados_selecionados["lote"])
+        marca_produto = st.text_input("Marca:", value=dados_selecionados["marca"])
+        gramatura_prod = st.text_input("Gramatura (g):", value=dados_selecionados["gramatura"])
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
