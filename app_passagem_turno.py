@@ -1,7 +1,7 @@
+
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
-import requests
 
 # ---------------------------------------------------------
 # CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
@@ -22,7 +22,7 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro de Colaboradores Atualizado
+# Cadastro Oficial de Colaboradores (Com Acesso Restrito)
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
@@ -53,7 +53,7 @@ CODIGOS_OCORRENCIAS = {
 }
 
 st.set_page_config(
-    page_title="Qualit3c | Registro & Passagem de Turno",
+    page_title="Qualit3c | Check-lists Produção",
     page_icon="📋",
     layout="wide"
 )
@@ -112,12 +112,12 @@ dt_agora = obter_datetime_br()
 turno_atual = calcular_turno(dt_agora)
 
 # ---------------------------------------------------------
-# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR / SUPERVISOR
+# PÁGINA 1: IDENTIFICAÇÃO DO OPERADOR / GESTÃO
 # ---------------------------------------------------------
 if st.session_state.pagina == 1:
     st.markdown("""
     <div class="qualit3c-topbar">
-        <div class="qualit3c-title">🏭 Qualit3c — Controle de Empacotamento por Equipamento (PRO.DC1416)</div>
+        <div class="qualit3c-title">🏭 Qualit3c — Check-lists Produção (PRO.DC1416)</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -125,17 +125,19 @@ if st.session_state.pagina == 1:
     with col_c:
         st.subheader("🔑 Identificação")
         with st.form("form_login_operador"):
-            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32013")
+            mat_input = st.text_input("Matrícula:", placeholder="Ex: 32164")
             setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
-            area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Supervisão (Relatório Final)"])
+            area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Gestão"])
             
             btn_entrar = st.form_submit_button("ACESSAR SISTEMA DIGITAL", use_container_width=True)
             if btn_entrar:
                 mat_clean = mat_input.strip()
                 if not mat_clean:
                     st.error("Informe a matrícula.")
+                elif mat_clean not in CADASTRO_COLABORADORES:
+                    st.error("❌ Matrícula não cadastrada no sistema! Solicite o cadastro ao administrador.")
                 else:
-                    nome_encontrado = CADASTRO_COLABORADORES.get(mat_clean, f"COLABORADOR ({mat_clean})")
+                    nome_encontrado = CADASTRO_COLABORADORES[mat_clean]
                     st.session_state.operador_matricula = mat_clean
                     st.session_state.operador_nome = nome_encontrado
                     st.session_state.setor_selecionado = setor_input
@@ -144,13 +146,13 @@ if st.session_state.pagina == 1:
                     st.rerun()
 
 # ---------------------------------------------------------
-# PÁGINA 2: FORMULÁRIO OU RELATÓRIO MENSAGEM
+# PÁGINA 2: FORMULÁRIO OU GESTÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina == 2:
     st.markdown(f"""
     <div class="qualit3c-topbar">
         <div style="font-size: 0.85rem; font-weight: 700;">USUÁRIO: {st.session_state.operador_nome.upper()} ({st.session_state.operador_matricula}) | SETOR: {st.session_state.setor_selecionado.upper()} | ÁREA: {st.session_state.area_atuacao.upper()}</div>
-        <div class="qualit3c-title">Controle de Empacotamento por Equipamento (PRO.DC1416 - R00)</div>
+        <div class="qualit3c-title">Check-lists Produção (PRO.DC1416 - R00)</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -254,8 +256,8 @@ elif st.session_state.pagina == 2:
                 else:
                     st.error("Informe o nome do produto.")
 
-    # FLUXO 3: VISÃO DO SUPERVISOR (GERAÇÃO DA MENSAGEM DO WHATSAPP + EXPORTAÇÃO DA PLANILHA)
-    elif st.session_state.area_atuacao == "Supervisão (Relatório Final)":
+    # FLUXO 3: GESTÃO (MENSAGEM DO WHATSAPP + EXPORTAÇÃO DA PLANILHA)
+    elif st.session_state.area_atuacao == "Gestão":
         st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
         st.caption("Este relatório extrai unicamente: Máquina, Produção Final, Produto, Lote e Ocorrências resumidas.")
 
@@ -324,6 +326,6 @@ elif st.session_state.pagina == 2:
 # ---------------------------------------------------------
 st.markdown("""
 <div class="qualit3c-footer">
-    SISTEMA QUALIT3C — CONTROLE DE EMPACOTAMENTO POR EQUIPAMENTO | PRO.DC1416 - R00
+    SISTEMA QUALIT3C — CHECK-LISTS PRODUÇÃO | PRO.DC1416 - R00
 </div>
 """, unsafe_allow_html=True)
