@@ -30,35 +30,35 @@ CADASTRO_COLABORADORES = {
     "21491": "FLÁVIO GIOVANE FERNANDES DA SILVA",
     "32193": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
     "22052": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
-    "32037": "ÍTALA SILVA DO NASCIMENTO",
+    "32037": "ÍTALO SILVA DO NASCIMENTO",
     "32308": "JOÃO VICTOR BARBOSA DA SILVA",
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Equipe Fixa Mapeada da Lista Oficial de Envase Polivalente (Turno C)
+# Mapeamento Fiel e Revisado do PDF (Turno C)
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
-        "auxiliares": ["LUAN TALES DA COSTA OLIVEIRA", "EVERSON ZAIRO SILVA DE ARAÚJO", "DENILSON SILVA DOS SANTOS", "ADSON ANDREY DE MOURA BATISTA"]
+        "auxiliares": ["LUAN TALES DA COSTA OLIVEIRA"]
     },
     "VOLPACK": {
         "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
-        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "ANDRIALISSON", "BRENDO", "MAYK"]
+        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "DENILSON SILVA DOS SANTOS", "ADSON ANDREY DE MOURA BATISTA"]
     },
     "EVOLUTION 01": {
         "operador": "JOEDSON DOS SANTOS ARAÚJO",
-        "auxiliares": ["ANDRIALISSON", "MAYK"]
+        "auxiliares": []
     },
     "EVOLUTION 02": {
         "operador": "WEVERTON BRUNO DE LIMA",
         "auxiliares": ["LUAN DE LIMA SILVA", "BRENDON HERISON BARBOSA DE OLIVEIRA", "NERISMAR ALVES CARVALHO", "SAMUEL DEYVID SILVA DE LIMA"]
     },
     "LINEA 01": {
-        "operador": "ÍTALA SILVA DO NASCIMENTO",
+        "operador": "ÍTALO SILVA DO NASCIMENTO",
         "auxiliares": ["JEFFERSON DA SILVA DE OLIVEIRA", "FRANCISCO APOLONIO DA SILVA", "DAVI SANTANA DE OLIVEIRA"]
     },
     "LINEA 02": {
-        "operador": "EQUIPE LINEA 02",
+        "operador": "",
         "auxiliares": ["ALISSON FORTUNATO DA SILVA", "EWERTON GOMES FERREIRA"]
     },
     "BOSCH 16": {
@@ -158,7 +158,6 @@ if "area_atuacao" not in st.session_state:
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
 
-# Lista dinâmica de ocorrências
 if "lista_ocorrencias_input" not in st.session_state:
     st.session_state.lista_ocorrencias_input = [{"id": 0, "codigo": "Nenhuma", "minutos": 0}]
 if "next_oc_id" not in st.session_state:
@@ -263,7 +262,7 @@ elif st.session_state.pagina == 2:
         with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
         st.markdown("---")
-        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS (APENAS 1 BOTÃO X NAS OCORRÊNCIAS EXTRAS)
+        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS
         st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
 
         lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
@@ -288,18 +287,15 @@ elif st.session_state.pagina == 2:
                 )
                 item["minutos"] = min_val
             
-            # Botão de remover individual apenas para ocorrências extras (a partir da Ocorrência 2)
             if idx > 0:
                 if st.button(f"🗑️ Remover Ocorrência {idx+1}", key=f"btn_del_oc_{item['id']}"):
                     indices_para_remover.append(idx)
 
-        # Se algum botão de remoção foi acionado
         if indices_para_remover:
             for i in indices_para_remover:
                 st.session_state.lista_ocorrencias_input.pop(i)
             st.rerun()
 
-        # Botão + para adicionar nova ocorrência
         if st.button("➕ Adicionar Ocorrência", use_container_width=False):
             st.session_state.lista_ocorrencias_input.append({
                 "id": st.session_state.next_oc_id, 
@@ -323,11 +319,14 @@ elif st.session_state.pagina == 2:
             operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
             aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-            aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=aux_fixos_sugeridos + ["Outros"], default=aux_fixos_sugeridos)
+            # Opção para incluir novato manualmente
+            opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
+            
+            aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=opcoes_aux, default=aux_fixos_sugeridos)
 
             aux_outros_txt = ""
-            if "Outros" in aux_marcados:
-                aux_outros_txt = st.text_input("Informe o nome do(s) auxiliar(es) substituto(s) / extra(s):", placeholder="Ex: SILVA, FERREIRA")
+            if "➕ Outros / Novato (Digitar)" in aux_marcados:
+                aux_outros_txt = st.text_input("Digite o nome do(s) novo(s) colaborador(es) ou substituto(s):", placeholder="Ex: SILVA, FERREIRA")
 
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
 
@@ -337,9 +336,9 @@ elif st.session_state.pagina == 2:
                     if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
                         ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
 
-                lista_aux_finais = [a for a in aux_marcados if a != "Outros"]
+                lista_aux_finais = [a for a in aux_marcados if a != "➕ Outros / Novato (Digitar)"]
                 if aux_outros_txt.strip():
-                    lista_aux_finais.append(aux_outros_txt.strip())
+                    lista_aux_finais.append(aux_outros_txt.strip().upper())
                 
                 auxiliares_str = ", ".join(lista_aux_finais)
 
