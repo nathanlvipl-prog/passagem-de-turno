@@ -96,34 +96,19 @@ CODIGOS_OCORRENCIAS = {
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
-# Base de Dados Oficial Extraída Integralmente da sua Planilha "OP TESTE"
+# Base de Dados Oficial de OPs
 DADOS_BASE_OFICIAL = [
-    # LEEPACK
     {"maquina": "LEEPACK", "produto": "CAFE C/LEIT 3C REF 24X100G", "lote": "1098836", "marca": "3CORAÇÕES", "gramatura": "100g"},
-    
-    # BOSCH 16
     {"maquina": "BOSCH 16", "produto": "CAFE CAPP SC FOOD 5X1KG", "lote": "1098834", "marca": "3CORAÇÕES", "gramatura": "1kg"},
     {"maquina": "BOSCH 16", "produto": "CAFE CAPP 3C BX ACUC 5S 5X1KG", "lote": "1098835", "marca": "3CORAÇÕES", "gramatura": "1kg"},
-    
-    # LINEA 01
     {"maquina": "LINEA 01", "produto": "CAFE CAPP IGUA CHOC PT 24X200G", "lote": "1098909", "marca": "3CORAÇÕES", "gramatura": "200g"},
-    
-    # LINEA 02
     {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CAPP 6X220G", "lote": "1098911", "marca": "3CORAÇÕES", "gramatura": "220g"},
     {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CBAUN 6X220G", "lote": "1098912", "marca": "3CORAÇÕES", "gramatura": "220g"},
-    
-    # EVOLUTION 01 (Linha Stick)
     {"maquina": "EVOLUTION 01", "produto": "SUPLEMENTO ALIM PPOWER BET ACAI 6X14X9G", "lote": "1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
-    
-    # EVOLUTION 02
     {"maquina": "EVOLUTION 02", "produto": "CHOCOLATE QUEN PO 3C STICK 30X20G", "lote": "1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
-    
-    # VOLPACK
     {"maquina": "VOLPACK", "produto": "CAFE CAPP CRUZ CARAM SAL CHL SCH 8X8X15G", "lote": "1098831", "marca": "3CORAÇÕES", "gramatura": "15g"},
     {"maquina": "VOLPACK", "produto": "CAFE CLEIT 3C ZR SCH 30X20G", "lote": "1098939", "marca": "3CORAÇÕES", "gramatura": "20g"},
     {"maquina": "VOLPACK", "produto": "CAFE CAPP IGUA CLAS SCH 8X10X10G", "lote": "1098960", "marca": "3CORAÇÕES", "gramatura": "10g"},
-    
-    # M028
     {"maquina": "M028", "produto": "CAFE CAPP SC CLAS PT 24X200G", "lote": "1098832", "marca": "3CORAÇÕES", "gramatura": "200g"}
 ]
 
@@ -255,7 +240,7 @@ elif st.session_state.pagina == 2:
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
-            maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes)
+            maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes, key="selectbox_maquina_atual")
         with c_m2:
             data_prod = st.date_input("Data (dd/mm/aaaa):", dt_agora, format="DD/MM/YYYY")
         with c_m3:
@@ -266,7 +251,6 @@ elif st.session_state.pagina == 2:
         st.markdown("---")
         st.markdown("##### 1. Identificação e Produto")
 
-        # Filtra os produtos correspondentes exclusivamente à máquina selecionada
         produtos_encontrados = []
         detalhes_produtos = {}
 
@@ -284,7 +268,7 @@ elif st.session_state.pagina == 2:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
             detalhes_produtos["➕ Digitar Produto Manualmente..."] = {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""}
 
-        prod_escolhido = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_encontrados)
+        prod_escolhido = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_encontrados, key=f"prod_sel_{maq_sel}")
 
         dados_p = detalhes_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
 
@@ -344,56 +328,63 @@ elif st.session_state.pagina == 2:
 
         st.markdown("---")
 
-        with st.form("form_envase_final"):
-            st.markdown("##### 3. Perdas e Equipe da Linha")
-            d1, d2, d3 = st.columns(3)
-            with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
-            with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
-            with d3: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
+        # Seção sem form para permitir digitação instantânea do auxiliar manual
+        st.markdown("##### 3. Perdas e Equipe da Linha")
+        d1, d2, d3 = st.columns(3)
+        with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
+        with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
+        with d3: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
 
-            st.markdown("##### 👥 Equipe da Linha (Operador e Auxiliares)")
-            operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
+        st.markdown("##### 👥 Equipe da Linha (Operador e Auxiliares)")
+        operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
-            aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-            opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
+        aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
+        opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
+        
+        # Chave dinâmica isolada por máquina para evitar que os auxiliares fiquem presos ao trocar
+        aux_marcados = st.multiselect(
+            "Auxiliares de Empacotamento Presenciados:", 
+            options=opcoes_aux, 
+            default=aux_fixos_sugeridos, 
+            key=f"multiselect_aux_{maq_sel}"
+        )
+
+        aux_outros_txt = ""
+        if "➕ Outros / Novato (Digitar)" in aux_marcados:
+            aux_outros_txt = st.text_input("Digite o nome do(s) novo(s) colaborador(es) ou substituto(s):", placeholder="Ex: SILVA, FERREIRA", key=f"input_outro_aux_{maq_sel}")
+
+        st.markdown("")
+        btn_salvar_envase = st.button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
+
+        if btn_salvar_envase:
+            ocorrencias_coletadas = []
+            for oc_item in st.session_state.lista_ocorrencias_input:
+                if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
+                    ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
+
+            lista_aux_finais = [a for a in aux_marcados if a != "➕ Outros / Novato (Digitar)"]
+            if aux_outros_txt.strip():
+                lista_aux_finais.append(aux_outros_txt.strip().upper())
             
-            aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=opcoes_aux, default=aux_fixos_sugeridos)
+            auxiliares_str = ", ".join(lista_aux_finais)
 
-            aux_outros_txt = ""
-            if "➕ Outros / Novato (Digitar)" in aux_marcados:
-                aux_outros_txt = st.text_input("Digite o nome do(s) novo(s) colaborador(es) ou substituto(s):", placeholder="Ex: SILVA, FERREIRA")
-
-            btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
-
-            if btn_salvar_envase:
-                ocorrencias_coletadas = []
-                for oc_item in st.session_state.lista_ocorrencias_input:
-                    if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
-                        ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
-
-                lista_aux_finais = [a for a in aux_marcados if a != "➕ Outros / Novato (Digitar)"]
-                if aux_outros_txt.strip():
-                    lista_aux_finais.append(aux_outros_txt.strip().upper())
-                
-                auxiliares_str = ", ".join(lista_aux_finais)
-
-                registro = {
-                    "data": data_prod.strftime("%d/%m/%Y"),
-                    "turno": turno_sel,
-                    "setor": st.session_state.setor_selecionado,
-                    "area": "Envase",
-                    "maquina": maq_sel,
-                    "produto": f"{desc_produto} ({gramatura_prod})" if gramatura_prod else desc_produto,
-                    "lote": lote_prod if not sem_prog else "-",
-                    "producao": tot_prod if not sem_prog else "Sem programação",
-                    "ocorrencias": ocorrencias_coletadas,
-                    "desp_primaria": desp_primaria,
-                    "operador_linha": operador_linha,
-                    "auxiliares": auxiliares_str,
-                    "operador_sistema": st.session_state.operador_nome_completo
-                }
-                st.session_state.registros_completos.append(registro)
-                st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
+            registro = {
+                "data": data_prod.strftime("%d/%m/%Y"),
+                "turno": turno_sel,
+                "setor": st.session_state.setor_selecionado,
+                "area": "Envase",
+                "maquina": maq_sel,
+                "produto": f"{desc_produto} ({gramatura_prod})" if gramatura_prod else desc_produto,
+                "lote": lote_prod if not sem_prog else "-",
+                "producao": tot_prod if not sem_prog else "Sem programação",
+                "ocorrencias": ocorrencias_coletadas,
+                "desp_primaria": desp_primaria,
+                "operador_linha": operador_linha,
+                "auxiliares": auxiliares_str,
+                "operador_sistema": st.session_state.operador_nome_completo
+            }
+            st.session_state.registros_completos.append(registro)
+            st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
 
     elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
         tipo_label = st.session_state.area_atuacao
