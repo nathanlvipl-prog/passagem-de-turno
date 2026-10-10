@@ -158,7 +158,7 @@ if "area_atuacao" not in st.session_state:
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
 
-# Estado dinâmico das Ocorrências (Chave única para remoção individual)
+# Lista dinâmica de ocorrências
 if "lista_ocorrencias_input" not in st.session_state:
     st.session_state.lista_ocorrencias_input = [{"id": 0, "codigo": "Nenhuma", "minutos": 0}]
 if "next_oc_id" not in st.session_state:
@@ -263,15 +263,14 @@ elif st.session_state.pagina == 2:
         with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
         st.markdown("---")
-        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS (COM BOTÃO + E X DEDICADOS)
+        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS (APENAS 1 BOTÃO X NAS OCORRÊNCIAS EXTRAS)
         st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
-        st.caption("Adicione quantas ocorrências ocorrerem no turno.")
 
         lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
-        
         indices_para_remover = []
+
         for idx, item in enumerate(st.session_state.lista_ocorrencias_input):
-            c_oc, c_min, c_del = st.columns([3, 1.2, 0.4])
+            c_oc, c_min = st.columns([2.5, 1.5])
             with c_oc:
                 cod_val = st.selectbox(
                     f"Ocorrência {idx+1}:", 
@@ -288,19 +287,19 @@ elif st.session_state.pagina == 2:
                     key=f"oc_min_item_{item['id']}"
                 )
                 item["minutos"] = min_val
-            with c_del:
-                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                if len(st.session_state.lista_ocorrencias_input) > 1:
-                    if st.button("❌", key=f"btn_del_oc_{item['id']}", help="Excluir esta ocorrência"):
-                        indices_para_remover.append(idx)
+            
+            # Botão de remover individual apenas para ocorrências extras (a partir da Ocorrência 2)
+            if idx > 0:
+                if st.button(f"🗑️ Remover Ocorrência {idx+1}", key=f"btn_del_oc_{item['id']}"):
+                    indices_para_remover.append(idx)
 
-        # Se algum X de exclusão foi clicado
+        # Se algum botão de remoção foi acionado
         if indices_para_remover:
             for i in indices_para_remover:
                 st.session_state.lista_ocorrencias_input.pop(i)
             st.rerun()
 
-        # Botão + para adicionar nova ocorrência (Posicionado LOGO ABAIXO)
+        # Botão + para adicionar nova ocorrência
         if st.button("➕ Adicionar Ocorrência", use_container_width=False):
             st.session_state.lista_ocorrencias_input.append({
                 "id": st.session_state.next_oc_id, 
@@ -333,7 +332,6 @@ elif st.session_state.pagina == 2:
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
-                # Coleta das Ocorrências válidas preenchidas
                 ocorrencias_coletadas = []
                 for oc_item in st.session_state.lista_ocorrencias_input:
                     if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
