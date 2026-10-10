@@ -21,7 +21,7 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Cadastro Oficial de Colaboradores (Com Nome Completo)
+# Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
@@ -157,8 +157,12 @@ if "area_atuacao" not in st.session_state:
     st.session_state.area_atuacao = "Envase"
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
-if "num_ocorrencias" not in st.session_state:
-    st.session_state.num_ocorrencias = 1
+
+# Estado dinâmico das Ocorrências (Chave única para remoção individual)
+if "lista_ocorrencias_input" not in st.session_state:
+    st.session_state.lista_ocorrencias_input = [{"id": 0, "codigo": "Nenhuma", "minutos": 0}]
+if "next_oc_id" not in st.session_state:
+    st.session_state.next_oc_id = 1
 
 dt_agora = obter_datetime_br()
 turno_atual = calcular_turno(dt_agora)
@@ -235,47 +239,81 @@ elif st.session_state.pagina == 2:
         
         st.markdown("---")
 
-        with st.form("form_envase_ficha"):
-            st.markdown("##### 1. Identificação e Produto")
-            
-            lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
-            prod_sel_box = st.selectbox("Selecione o Produto:", lista_produtos)
+        # BLOCO 1: IDENTIFICAÇÃO DO PRODUTO E METAS
+        st.markdown("##### 1. Identificação e Produto")
+        lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
+        prod_sel_box = st.selectbox("Selecione o Produto:", lista_produtos)
 
-            if prod_sel_box != "Digitar Manualmente...":
-                dados_p = PLANILHA_LOTES_PRODUTOS[prod_sel_box]
-                desc_produto = st.text_input("Descrição do Produto:", value=prod_sel_box)
-                lote_prod = st.text_input("Lote (Auto-Preenchido):", value=dados_p["lote"])
-                marca_produto = st.text_input("Marca:", value=dados_p["marca"])
-                gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
-            else:
-                desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
-                lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
-                marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
-                gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
+        if prod_sel_box != "Digitar Manualmente...":
+            dados_p = PLANILHA_LOTES_PRODUTOS[prod_sel_box]
+            desc_produto = st.text_input("Descrição do Produto:", value=prod_sel_box)
+            lote_prod = st.text_input("Lote (Auto-Preenchido):", value=dados_p["lote"])
+            marca_produto = st.text_input("Marca:", value=dados_p["marca"])
+            gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
+        else:
+            desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
+            lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
+            marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
+            gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
 
-            st.markdown("##### 2. Produção e Ocorrências")
-            tm1, tm2, tm3 = st.columns(3)
-            with tm1: meta_prod = st.number_input("Meta (unid):", value=0, step=100)
-            with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
-            with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
+        st.markdown("##### 2. Produção e Ocorrências")
+        tm1, tm2, tm3 = st.columns(3)
+        with tm1: meta_prod = st.number_input("Meta (unid):", value=0, step=100)
+        with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
+        with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
-            st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
-            st.caption("Adicione quantas ocorrências ocorrerem no turno.")
+        st.markdown("---")
+        # BLOCO 2: APONTAMENTO DE OCORRÊNCIAS (COM BOTÃO + E X DEDICADOS)
+        st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
+        st.caption("Adicione quantas ocorrências ocorrerem no turno.")
 
-            lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
-            
-            # Dinâmica de Adição de Ocorrências
-            ocorrencias_coletadas = []
-            for i in range(st.session_state.num_ocorrencias):
-                col_oc, col_min = st.columns([3, 1])
-                with col_oc:
-                    sel_oc = st.selectbox(f"Ocorrência {i+1}:", lista_opcoes_oc, key=f"oc_sel_{i}")
-                with col_min:
-                    val_min = st.number_input(f"Minutos:", value=0, min_value=0, step=5, key=f"oc_min_{i}")
-                
-                if sel_oc != "Nenhuma" and val_min > 0:
-                    ocorrencias_coletadas.append(f"{sel_oc} ({val_min} min)")
+        lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
+        
+        indices_para_remover = []
+        for idx, item in enumerate(st.session_state.lista_ocorrencias_input):
+            c_oc, c_min, c_del = st.columns([3, 1.2, 0.4])
+            with c_oc:
+                cod_val = st.selectbox(
+                    f"Ocorrência {idx+1}:", 
+                    lista_opcoes_oc, 
+                    key=f"oc_cod_item_{item['id']}"
+                )
+                item["codigo"] = cod_val
+            with c_min:
+                min_val = st.number_input(
+                    "Minutos:", 
+                    value=item["minutos"], 
+                    min_value=0, 
+                    step=5, 
+                    key=f"oc_min_item_{item['id']}"
+                )
+                item["minutos"] = min_val
+            with c_del:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                if len(st.session_state.lista_ocorrencias_input) > 1:
+                    if st.button("❌", key=f"btn_del_oc_{item['id']}", help="Excluir esta ocorrência"):
+                        indices_para_remover.append(idx)
 
+        # Se algum X de exclusão foi clicado
+        if indices_para_remover:
+            for i in indices_para_remover:
+                st.session_state.lista_ocorrencias_input.pop(i)
+            st.rerun()
+
+        # Botão + para adicionar nova ocorrência (Posicionado LOGO ABAIXO)
+        if st.button("➕ Adicionar Ocorrência", use_container_width=False):
+            st.session_state.lista_ocorrencias_input.append({
+                "id": st.session_state.next_oc_id, 
+                "codigo": "Nenhuma", 
+                "minutos": 0
+            })
+            st.session_state.next_oc_id += 1
+            st.rerun()
+
+        st.markdown("---")
+
+        # BLOCO 3: PERDAS, EQUIPE E SALVAMENTO
+        with st.form("form_envase_final"):
             st.markdown("##### 3. Perdas e Equipe da Linha")
             d1, d2, d3 = st.columns(3)
             with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
@@ -295,6 +333,12 @@ elif st.session_state.pagina == 2:
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
+                # Coleta das Ocorrências válidas preenchidas
+                ocorrencias_coletadas = []
+                for oc_item in st.session_state.lista_ocorrencias_input:
+                    if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
+                        ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
+
                 lista_aux_finais = [a for a in aux_marcados if a != "Outros"]
                 if aux_outros_txt.strip():
                     lista_aux_finais.append(aux_outros_txt.strip())
@@ -318,13 +362,6 @@ elif st.session_state.pagina == 2:
                 }
                 st.session_state.registros_completos.append(registro)
                 st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
-
-        # Botão para adicionar nova caixa de Ocorrência (Fora do formulário principal)
-        col_btn1, col_btn2 = st.columns([1, 3])
-        with col_btn1:
-            if st.button("➕ Adicionar Ocorrência", use_container_width=True):
-                st.session_state.num_ocorrencias += 1
-                st.rerun()
 
     elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
         tipo_label = st.session_state.area_atuacao
