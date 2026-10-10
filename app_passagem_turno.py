@@ -71,14 +71,17 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Base Interna de Produtos e Lotes
-PLANILHA_LOTES_PRODUTOS = {
-    "CAP. CLASSIC 100G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
-    "CAFÉ COM LEITE TRADICIONAL 200G": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
-    "CHOCOLATE QUENTE CREMOSO 400G": {"lote": "1095502", "marca": "SANTA CLARA", "gramatura": "400"},
-    "CAPP CLASSIC FOOD 1000G": {"lote": "1094310", "marca": "3CORAÇÕES", "gramatura": "1000"},
-    "CAPPUSHINO CLASSIC 200G": {"lote": "1096500", "marca": "3CORAÇÕES", "gramatura": "200"},
-}
+# Função para puxar os dados da Planilha de OPs do Google Sheets em tempo real
+@st.cache_data(ttl=600) # Atualiza o cache a cada 10 minutos
+def carregar_dados_ops():
+    try:
+        url_csv = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=220654294"
+        df_ops = pd.read_csv(url_csv)
+        return df_ops
+    except Exception as e:
+        return None
+
+df_ops_global = carregar_dados_ops()
 
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
@@ -238,17 +241,38 @@ elif st.session_state.pagina == 2:
         
         st.markdown("---")
 
-        # BLOCO 1: IDENTIFICAÇÃO DO PRODUTO E METAS
+        # BLOCO 1: IDENTIFICAÇÃO DO PRODUTO E METAS (Puxando da Planilha de OPs)
         st.markdown("##### 1. Identificação e Produto")
-        lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
-        prod_sel_box = st.selectbox("Selecione o Produto:", lista_produtos)
+        
+        lista_produtos_op = ["Digitar Manualmente..."]
+        dict_produtos_info = {}
 
-        if prod_sel_box != "Digitar Manualmente...":
-            dados_p = PLANILHA_LOTES_PRODUTOS[prod_sel_box]
+        if df_ops_global is not None and not df_ops_global.empty:
+            # Tenta identificar automaticamente as colunas da planilha
+            colunas_possiveis = [c for c in df_ops_global.columns]
+            # Vamos assumir que a primeira coluna ou coluna de descrição esteja disponível
+            try:
+                for _, row in df_ops_global.iterrows():
+                    # Pega a primeira coluna como descrição do produto (ajuste conforme o cabeçalho real da sua planilha)
+                    prod_nome = str(row.iloc[0]).strip()
+                    if prod_nome and prod_nome != "nan":
+                        lista_produtos_op.append(prod_nome)
+                        dict_produtos_info[prod_nome] = {
+                            "lote": str(row.iloc[1]).strip() if len(row) > 1 else "",
+                            "marca": str(row.iloc[2]).strip() if len(row) > 2 else "3CORAÇÕES",
+                            "gramatura": str(row.iloc[3]).strip() if len(row) > 3 else ""
+                        }
+            except Exception:
+                pass
+
+        prod_sel_box = st.selectbox("Selecione o Produto (da Planilha de OPs):", lista_produtos_op)
+
+        if prod_sel_box != "Digitar Manualmente..." and prod_sel_box in dict_produtos_info:
+            info_p = dict_produtos_info[prod_sel_box]
             desc_produto = st.text_input("Descrição do Produto:", value=prod_sel_box)
-            lote_prod = st.text_input("Lote (Auto-Preenchido):", value=dados_p["lote"])
-            marca_produto = st.text_input("Marca:", value=dados_p["marca"])
-            gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
+            lote_prod = st.text_input("Lote (Auto-Preenchido da OP):", value=info_p["lote"])
+            marca_produto = st.text_input("Marca:", value=info_p["marca"])
+            gramatura_prod = st.text_input("Gramatura (g):", value=info_p["gramatura"])
         else:
             desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
             lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
@@ -319,7 +343,6 @@ elif st.session_state.pagina == 2:
             operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
             aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-            # Opção para incluir novato manualmente
             opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
             
             aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=opcoes_aux, default=aux_fixos_sugeridos)
