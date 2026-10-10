@@ -188,7 +188,6 @@ if st.session_state.pagina == 1:
                     st.error("❌ Matrícula não cadastrada no sistema!")
                 else:
                     nome_completo = CADASTRO_COLABORADORES[mat_clean]
-                    # Exibe apenas o primeiro nome na interface do site
                     primeiro_nome = nome_completo.split()[0]
                     st.session_state.operador_matricula = mat_clean
                     st.session_state.operador_nome = primeiro_nome
@@ -220,7 +219,7 @@ elif st.session_state.pagina == 2:
     maquinas_opcoes = MAQUINAS_POR_SETOR.get(st.session_state.setor_selecionado, [])
 
     if st.session_state.area_atuacao == "Envase":
-        st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
+        st.subheader("📝 Controle de empacotamentos")
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -279,7 +278,6 @@ elif st.session_state.pagina == 2:
             operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
             aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-            # Todos os auxiliares fixos já vêm selecionados por padrão
             aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=aux_fixos_sugeridos + ["Outros"], default=aux_fixos_sugeridos)
 
             aux_outros_txt = ""
