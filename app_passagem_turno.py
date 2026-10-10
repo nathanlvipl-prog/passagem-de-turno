@@ -1,6 +1,9 @@
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
+import requests
+import io
+import re
 
 # ---------------------------------------------------------
 # CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
@@ -35,7 +38,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento Fiel e Revisado do PDF (Turno C)
+# Mapeamento de Equipes
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -96,16 +99,23 @@ CODIGOS_OCORRENCIAS = {
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
 
+# Link do Google Sheets (Aba Polivalente gid=220654294)
 GSHEET_OP_POLI_URL = "https://docs.google.com/spreadsheets/d/1YScgt0owZjmTWMKnlcwya1nPQKt0u341uPSb4U82_-E/export?format=csv&gid=220654294"
 
-@st.cache_data(ttl=60)
-def carregar_dados_gsheet(url):
+@st.cache_data(ttl=30)
+def carregar_dados_gsheet_robusto(url):
     try:
-        return pd.read_csv(url, dtype=str)
-    except Exception:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            df = pd.read_csv(io.StringIO(res.text), dtype=str)
+            df.dropna(how='all', inplace=True)
+            return df
+        return None
+    except Exception as e:
         return None
 
-dados_op_poli = carregar_dados_gsheet(GSHEET_OP_POLI_URL)
+dados_op_poli = carregar_dados_gsheet_robusto(GSHEET_OP_POLI_URL)
 
 st.set_page_config(
     page_title="Check-lists Produção",
@@ -229,10 +239,10 @@ elif st.session_state.pagina == 2:
         st.subheader("📝 Controle de empacotamentos")
 
         with st.expander("📋 Tabela de Referência de OPs (Google Sheets)"):
-            if dados_op_poli is not None:
+            if dados_op_poli is not None and not dados_op_poli.empty:
                 st.dataframe(dados_op_poli, use_container_width=True)
             else:
-                st.info("Carregando dados da planilha...")
+                st.warning("⚠️ Não foi possível carregar a planilha diretamente do Google Sheets. Verifique o compartilhamento ou link público.")
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -247,57 +257,68 @@ elif st.session_state.pagina == 2:
         st.markdown("---")
         st.markdown("##### 1. Identificação e Produto")
 
-        produtos_lista = []
-        mapa_produtos = {}
+        # Extração de Produtos diretamente das linhas da planilha
+        produtos_encontrados = []
+        detalhes_produtos = {}
 
         if dados_op_poli is not None and not dados_op_poli.empty:
-            try:
-                for _, row in dados_op_poli.iterrows():
-                    if len(row) > 0 and pd.notna(row.iloc[0]):
-                        desc = str(row.iloc[0]).strip()
-                        # Correção para o item da Evolution 01
-                        if "SUPLEMENTO ALIM POWER NET AÇAÍ" in desc.upper():
-                            desc = "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G"
+            for _, row in dados_op_poli.iterrows():
+                valores_linha = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip() != ""]
+                linha_completa_str = " ".join(valores_linha).upper()
 
-                        if desc and desc.lower() != "nan" and desc.lower() != "produto":
-                            lote_val = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
-                            marca_val = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "3CORAÇÕES"
-                            gram_val = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
-                            
-                            # Ajuste de gramatura 9g se for o suplemento
-                            if "SUPLEMENTO ALIM POWER NET AÇAÍ" in desc.upper():
-                                gram_val = "9g"
+                # Busca produtos vinculados à máquina selecionada ou percorre todos se não houver filtro estrito por linha
+                for val in valores_linha:
+                    # Identifica itens que parecem nomes de produtos (possuem gramatura ou descrição relevante)
+                    if len(val) > 5 and not val.startswith("PA ") and not val.isdigit() and val.upper() != "PRODUTO":
+                        desc_item = val
+                        lote_item = ""
+                        marca_item = "3CORAÇÕES"
+                        gramatura_item = ""
 
-                            if desc not in produtos_lista:
-                                produtos_lista.append(desc)
-                                mapa_produtos[desc] = {
-                                    "lote": lote_val,
-                                    "marca": marca_val,
-                                    "gramatura": gram_val
-                                }
-            except Exception:
-                pass
+                        # Extrai lote se houver campo iniciando com PA ou números de lote
+                        for item_v in valores_linha:
+                            if item_v.upper().startswith("PA ") or (item_v.isdigit() and len(item_v) >= 6):
+                                lote_item = item_v
 
-        if not produtos_lista:
-            produtos_lista = [
-                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G",
-                "CHOCOLATE QUEN PO 3C STICK 30X20G",
-                "CAP. CLASSIC 200G"
-            ]
-            mapa_produtos = {
-                "SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G": {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
-                "CHOCOLATE QUEN PO 3C STICK 30X20G": {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
-                "CAP. CLASSIC 200G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "200g"}
-            }
+                        # Extrai gramatura (o valor que fica após o X na descrição)
+                        match_gram = re.search(r'X\s*(\d+\s*g)', desc_item, re.IGNORECASE)
+                        if match_gram:
+                            gramatura_item = match_gram.group(1).lower().replace(" ", "")
+                        else:
+                            match_g_final = re.search(r'(\d+\s*g)$', desc_item, re.IGNORECASE)
+                            if match_g_final:
+                                gramatura_item = match_g_final.group(1).lower().replace(" ", "")
 
-        prod_escolhido = st.selectbox("Selecione o Produto da Planilha de OPs:", produtos_lista)
+                        if desc_item not in produtos_encontrados:
+                            produtos_encontrados.append(desc_item)
+                            detalhes_produtos[desc_item] = {
+                                "lote": lote_item,
+                                "marca": marca_item,
+                                "gramatura": gramatura_item
+                            }
 
-        dados_selecionados = mapa_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
-        
+        # Cadastros Padrões por Máquina caso a busca geral não localize OPs específicas
+        if not produtos_encontrados:
+            if maq_sel == "EVOLUTION 01":
+                produtos_encontrados = ["SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G"]
+                detalhes_produtos["SUPLEMENTO ALIM POWER NET AÇAÍ 6X14X9G"] = {"lote": "PA 1098748", "marca": "3CORAÇÕES", "gramatura": "9g"}
+            elif maq_sel == "EVOLUTION 02":
+                produtos_encontrados = ["CHOCOLATE QUEN PO 3C STICK 30X20G"]
+                detalhes_produtos["CHOCOLATE QUEN PO 3C STICK 30X20G"] = {"lote": "PA 1098833", "marca": "3CORAÇÕES", "gramatura": "20g"}
+            elif maq_sel == "M028":
+                produtos_encontrados = ["CAPP SC CLAS 200G"]
+                detalhes_produtos["CAPP SC CLAS 200G"] = {"lote": "PA 1096176", "marca": "3CORAÇÕES", "gramatura": "200g"}
+            else:
+                produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
+
+        prod_escolhido = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_encontrados)
+
+        dados_p = detalhes_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
+
         desc_produto = st.text_input("Descrição do Produto:", value=prod_escolhido)
-        lote_prod = st.text_input("Lote (Carregado da Planilha):", value=dados_selecionados["lote"])
-        marca_produto = st.text_input("Marca:", value=dados_selecionados["marca"])
-        gramatura_prod = st.text_input("Gramatura (g):", value=dados_selecionados["gramatura"])
+        lote_prod = st.text_input("Lote (Extraído da Planilha):", value=dados_p["lote"])
+        marca_produto = st.text_input("Marca:", value=dados_p["marca"])
+        gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
