@@ -28,6 +28,30 @@ CADASTRO_COLABORADORES = {
     "32013": "RAFAEL FERREIRA DE OLIVEIRA",
 }
 
+# Equipe Fixa Padrão por Máquina/Linha (Exemplo de Cadastro)
+EQUIPE_FIXA_MAQUINAS = {
+    "LINEA 1": {
+        "operador": "ÍTALO",
+        "auxiliares": ["APOLÔNIO", "JEFERSON", "DAVI"]
+    },
+    "LEEPACK": {
+        "operador": "GILVAN",
+        "auxiliares": ["AUDACIR"]
+    },
+    "VOLPACK": {
+        "operador": "MARCOS",
+        "auxiliares": ["CLEITON", "RODRIGO"]
+    }
+}
+
+# Tabela/Planilha de Lotes Automáticos por Produto (Exemplo Mestra)
+PLANILHA_LOTES_PRODUTOS = {
+    "CAP. CLASSIC": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
+    "CAFÉ COM LEITE TRADICIONAL": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
+    "CHOCOLATE QUENTE CREMOSO": {"lote": "1095502", "marca": "SANTA CLARA", "gramatura": "400"},
+    "CAPP CLASSIC FOOD": {"lote": "1094310", "marca": "3CORAÇÕES", "gramatura": "1000"}
+}
+
 # Mapeamento de Máquinas por Setor
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["LEEPACK", "VOLPACK", "EVOLUTION 1", "LINEA 1", "LINEA 2", "STICK 01", "STICK 02", "M028"],
@@ -35,7 +59,7 @@ MAQUINAS_POR_SETOR = {
     "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
 }
 
-# Dicionário de Códigos de Ocorrências (Formato: Código | Motivo)
+# Dicionário de Códigos de Ocorrências (Código | Motivo)
 CODIGOS_OCORRENCIAS = {
     "11": "11 | SEM PROGRAMAÇÃO", 
     "12": "12 | REFEIÇÃO", 
@@ -198,20 +222,38 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Preenchimento da Ficha do Equipamento (PRO.DC1416)")
 
+        # Seleção da Máquina para Carregar Sugestões Fixas de Equipe
+        c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
+        with c_m1:
+            maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes)
+        with c_m2:
+            data_prod = st.date_input("Data (dd/mm/aaaa):", dt_agora, format="DD/MM/YYYY")
+        with c_m3:
+            turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
+
+        # Obter Equipe Sugerida para a Máquina Selecionada
+        equipe_sugerida = EQUIPE_FIXA_MAQUINAS.get(maq_sel, {"operador": "", "auxiliares": []})
+        
+        st.markdown("---")
+
         with st.form("form_envase_ficha"):
             st.markdown("##### 1. Identificação e Produto")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: maq_sel = st.selectbox("Máquina:", maquinas_opcoes)
-            with c2: 
-                # Exibição da data no formato brasileiro dd/mm/aaaa
-                data_prod = st.date_input("Data (dd/mm/aaaa):", dt_agora, format="DD/MM/YYYY")
-            with c3: turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
-            with c4: lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
+            
+            # Seleção do Produto com Auto-preenchimento do Lote
+            lista_produtos = ["Digitar Manualmente..."] + list(PLANILHA_LOTES_PRODUTOS.keys())
+            prod_sel_box = st.selectbox("Selecione o Produto (da Planilha Mestra):", lista_produtos)
 
-            c_p1, c_p2, c_p3 = st.columns([2, 1, 1])
-            with c_p1: desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
-            with c_p2: marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
-            with c_p3: gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
+            if prod_sel_box != "Digitar Manualmente...":
+                dados_p = PLANILHA_LOTES_PRODUTOS[prod_sel_box]
+                desc_produto = st.text_input("Descrição do Produto:", value=prod_sel_box)
+                lote_prod = st.text_input("Lote (Auto-Preenchido):", value=dados_p["lote"])
+                marca_produto = st.text_input("Marca:", value=dados_p["marca"])
+                gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
+            else:
+                desc_produto = st.text_input("Descrição do Produto:", placeholder="Ex: CAP. CLASSIC")
+                lote_prod = st.text_input("Lote:", placeholder="Ex: 1096176")
+                marca_produto = st.text_input("Marca:", placeholder="Ex: 3CORAÇÕES")
+                gramatura_prod = st.text_input("Gramatura (g):", placeholder="Ex: 100")
 
             st.markdown("##### 2. Produção e Ocorrências")
             tm1, tm2, tm3 = st.columns(3)
@@ -230,17 +272,33 @@ elif st.session_state.pagina == 2:
             with oc2: sel_oc2 = st.selectbox("Ocorrência 2:", lista_opcoes_oc, index=0)
             with min2: val_min2 = st.number_input("Min 2:", value=0)
 
-            st.markdown("##### 3. Perdas e Equipe")
+            st.markdown("##### 3. Perdas e Equipe da Linha")
             d1, d2, d3 = st.columns(3)
             with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
             with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
             with d3: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
 
-            aux_empacotamento = st.text_input("Auxiliar Empacotamento:", placeholder="Ex: AUDACIR")
+            st.markdown("##### 👥 Equipe da Linha (Operador e Auxiliares)")
+            operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
+
+            # Caixa para seleção e inclusão de Auxiliares
+            aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
+            aux_marcados = st.multiselect("Auxiliares de Empacotamento Presenciados:", options=aux_fixos_sugeridos + ["Outros"], default=aux_fixos_sugeridos)
+
+            aux_outros_txt = ""
+            if "Outros" in aux_marcados:
+                aux_outros_txt = st.text_input("Informe o nome do(s) auxiliar(es) substituto(s) / extra(s):", placeholder="Ex: SILVA, FERREIRA")
 
             btn_salvar_envase = st.form_submit_button("💾 ENVIAR PARA A PLANILHA MESTRA E GERAR RESUMO", use_container_width=True)
 
             if btn_salvar_envase:
+                # Consolidação dos auxiliares
+                lista_aux_finais = [a for a in aux_marcados if a != "Outros"]
+                if aux_outros_txt.strip():
+                    lista_aux_finais.append(aux_outros_txt.strip())
+                
+                auxiliares_str = ", ".join(lista_aux_finais)
+
                 lista_ocs_formatadas = []
                 if sel_oc1 != "Nenhuma" and val_min1 > 0:
                     lista_ocs_formatadas.append(f"{sel_oc1} ({val_min1} min)")
@@ -258,8 +316,9 @@ elif st.session_state.pagina == 2:
                     "producao": tot_prod if not sem_prog else "Sem programação",
                     "ocorrencias": lista_ocs_formatadas,
                     "desp_primaria": desp_primaria,
-                    "auxiliar": aux_empacotamento,
-                    "operador": st.session_state.operador_nome
+                    "operador_linha": operador_linha,
+                    "auxiliares": auxiliares_str,
+                    "operador_sistema": st.session_state.operador_nome
                 }
                 st.session_state.registros_completos.append(registro)
                 st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso na Planilha Mestra!")
@@ -293,7 +352,7 @@ elif st.session_state.pagina == 2:
                         "lote": lote_m.strip(),
                         "producao": qtd_batidas,
                         "ocorrencias": [],
-                        "operador": st.session_state.operador_nome
+                        "operador_sistema": st.session_state.operador_nome
                     }
                     st.session_state.registros_completos.append(registro)
                     st.success(f"{tipo_label} do produto '{prod_m}' salva com sucesso!")
