@@ -71,7 +71,7 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Base Interna de Produtos e Lotes (Vinculada às OPs)
+# Base Interna de Produtos e Lotes
 PLANILHA_LOTES_PRODUTOS = {
     "CAP. CLASSIC 100G": {"lote": "1096176", "marca": "3CORAÇÕES", "gramatura": "100"},
     "CAFÉ COM LEITE TRADICIONAL 200G": {"lote": "1098718", "marca": "3CORAÇÕES", "gramatura": "200"},
@@ -157,6 +157,8 @@ if "area_atuacao" not in st.session_state:
     st.session_state.area_atuacao = "Envase"
 if "registros_completos" not in st.session_state:
     st.session_state.registros_completos = []
+if "num_ocorrencias" not in st.session_state:
+    st.session_state.num_ocorrencias = 1
 
 dt_agora = obter_datetime_br()
 turno_atual = calcular_turno(dt_agora)
@@ -258,15 +260,21 @@ elif st.session_state.pagina == 2:
             with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
             st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
+            st.caption("Adicione quantas ocorrências ocorrerem no turno.")
+
             lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
             
-            oc1, min1 = st.columns([3, 1])
-            with oc1: sel_oc1 = st.selectbox("Ocorrência 1:", lista_opcoes_oc, index=0)
-            with min1: val_min1 = st.number_input("Min 1:", value=0)
-
-            oc2, min2 = st.columns([3, 1])
-            with oc2: sel_oc2 = st.selectbox("Ocorrência 2:", lista_opcoes_oc, index=0)
-            with min2: val_min2 = st.number_input("Min 2:", value=0)
+            # Dinâmica de Adição de Ocorrências
+            ocorrencias_coletadas = []
+            for i in range(st.session_state.num_ocorrencias):
+                col_oc, col_min = st.columns([3, 1])
+                with col_oc:
+                    sel_oc = st.selectbox(f"Ocorrência {i+1}:", lista_opcoes_oc, key=f"oc_sel_{i}")
+                with col_min:
+                    val_min = st.number_input(f"Minutos:", value=0, min_value=0, step=5, key=f"oc_min_{i}")
+                
+                if sel_oc != "Nenhuma" and val_min > 0:
+                    ocorrencias_coletadas.append(f"{sel_oc} ({val_min} min)")
 
             st.markdown("##### 3. Perdas e Equipe da Linha")
             d1, d2, d3 = st.columns(3)
@@ -293,12 +301,6 @@ elif st.session_state.pagina == 2:
                 
                 auxiliares_str = ", ".join(lista_aux_finais)
 
-                lista_ocs_formatadas = []
-                if sel_oc1 != "Nenhuma" and val_min1 > 0:
-                    lista_ocs_formatadas.append(f"{sel_oc1} ({val_min1} min)")
-                if sel_oc2 != "Nenhuma" and val_min2 > 0:
-                    lista_ocs_formatadas.append(f"{sel_oc2} ({val_min2} min)")
-
                 registro = {
                     "data": data_prod.strftime("%d/%m/%Y"),
                     "turno": turno_sel,
@@ -308,7 +310,7 @@ elif st.session_state.pagina == 2:
                     "produto": desc_produto if not sem_prog else "Sem programação",
                     "lote": lote_prod if not sem_prog else "-",
                     "producao": tot_prod if not sem_prog else "Sem programação",
-                    "ocorrencias": lista_ocs_formatadas,
+                    "ocorrencias": ocorrencias_coletadas,
                     "desp_primaria": desp_primaria,
                     "operador_linha": operador_linha,
                     "auxiliares": auxiliares_str,
@@ -316,6 +318,13 @@ elif st.session_state.pagina == 2:
                 }
                 st.session_state.registros_completos.append(registro)
                 st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
+
+        # Botão para adicionar nova caixa de Ocorrência (Fora do formulário principal)
+        col_btn1, col_btn2 = st.columns([1, 3])
+        with col_btn1:
+            if st.button("➕ Adicionar Ocorrência", use_container_width=True):
+                st.session_state.num_ocorrencias += 1
+                st.rerun()
 
     elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
         tipo_label = st.session_state.area_atuacao
