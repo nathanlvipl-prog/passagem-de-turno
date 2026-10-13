@@ -35,27 +35,27 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento Oficial Atualizado de Equipes por Máquina
+# Mapeamento com apenas o PRIMEIRO NOME dos auxiliares
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
-        "auxiliares": ["LUAN TALES DA COSTA OLIVEIRA"]
+        "auxiliares": ["LUAN"]
     },
     "VOLPACK": {
         "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
-        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "BRENDON HERISON BARBOSA DE OLIVEIRA", "ANDRIALISSON", "MAYK"]
+        "auxiliares": ["EVERSON", "BRENDON", "ANDRIALISSON", "MAYK"]
     },
     "EVOLUTION 01": {
         "operador": "JOEDSON DOS SANTOS ARAÚJO",
-        "auxiliares": ["DENILSON SILVA DOS SANTOS", "ANDREY DE MOURA BATISTA", "NERISMAR ALVES CARVALHO"]
+        "auxiliares": ["DENILSON", "ANDREY", "NERISMAR"]
     },
     "EVOLUTION 02": {
         "operador": "WEVERTON BRUNO DE LIMA",
-        "auxiliares": ["BRENDON HERISON BARBOSA DE OLIVEIRA", "SAMUEL DEYVID SILVA DE LIMA", "ANDREY"]
+        "auxiliares": ["BRENDON", "SAMUEL", "ANDREY"]
     },
     "LINEA 01": {
         "operador": "ÍTALO SILVA DO NASCIMENTO",
-        "auxiliares": ["JEFFERSON DA SILVA DE OLIVEIRA", "FRANCISCO APOLONIO DA SILVA", "DAVI SANTANA DE OLIVEIRA"]
+        "auxiliares": ["JEFFERSON", "FRANCISCO", "DAVI"]
     },
     "LINEA 02": {
         "operador": "",
@@ -63,11 +63,11 @@ EQUIPE_FIXA_MAQUINAS = {
     },
     "BOSCH 16": {
         "operador": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
-        "auxiliares": ["ALISSON FORTUNATO DA SILVA"]
+        "auxiliares": ["ALISSON"]
     },
     "LEEPACK": {
         "operador": "JOÃO VICTOR BARBOSA DA SILVA",
-        "auxiliares": ["EWERTON GOMES FERREIRA"]
+        "auxiliares": ["EWERTON"]
     }
 }
 
@@ -338,18 +338,15 @@ elif st.session_state.pagina == 2:
         operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-        opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
         
+        # st.multiselect com accept_new_values ou permissão de digitação livre para novos nomes como "NAVARRO"
         aux_marcados = st.multiselect(
-            "Auxiliares de Empacotamento Presenciados:", 
-            options=opcoes_aux, 
+            "Auxiliares de empacotamento", 
+            options=aux_fixos_sugeridos, 
             default=aux_fixos_sugeridos, 
-            key=f"multiselect_aux_{maq_sel}"
+            key=f"multiselect_aux_{maq_sel}",
+            placeholder="Selecione ou digite o nome de outro auxiliar..."
         )
-
-        aux_outros_txt = ""
-        if "➕ Outros / Novato (Digitar)" in aux_marcados:
-            aux_outros_txt = st.text_input("Digite o nome do(s) novo(s) colaborador(es) ou substituto(s):", placeholder="Ex: SILVA, FERREIRA", key=f"input_outro_aux_{maq_sel}")
 
         st.markdown("")
         btn_salvar_envase = st.button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
@@ -360,11 +357,7 @@ elif st.session_state.pagina == 2:
                 if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
                     ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
 
-            lista_aux_finais = [a for a in aux_marcados if a != "➕ Outros / Novato (Digitar)"]
-            if aux_outros_txt.strip():
-                lista_aux_finais.append(aux_outros_txt.strip().upper())
-            
-            auxiliares_str = ", ".join(lista_aux_finais)
+            auxiliares_str = ", ".join([a.upper() for a in aux_marcados])
 
             registro = {
                 "data": data_prod.strftime("%d/%m/%Y"),
