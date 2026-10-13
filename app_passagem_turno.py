@@ -35,7 +35,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento com apenas o PRIMEIRO NOME dos auxiliares
+# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -339,13 +339,19 @@ elif st.session_state.pagina == 2:
 
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
         
-        # st.multiselect com accept_new_values ou permissão de digitação livre para novos nomes como "NAVARRO"
+        # Multiselect para selecionar os auxiliares cadastrados
         aux_marcados = st.multiselect(
-            "Auxiliares de empacotamento", 
+            "Auxiliares de empacotamento:", 
             options=aux_fixos_sugeridos, 
             default=aux_fixos_sugeridos, 
-            key=f"multiselect_aux_{maq_sel}",
-            placeholder="Selecione ou digite o nome de outro auxiliar..."
+            key=f"multiselect_aux_{maq_sel}"
+        )
+
+        # Campo de texto para adicionar novo auxiliar / novato de forma simples e direta
+        aux_extra = st.text_input(
+            "Outro Auxiliar / Novato (opcional):", 
+            placeholder="Ex: ANDREY, NAVARRO", 
+            key=f"input_extra_aux_{maq_sel}"
         )
 
         st.markdown("")
@@ -357,7 +363,12 @@ elif st.session_state.pagina == 2:
                 if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
                     ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
 
-            auxiliares_str = ", ".join([a.upper() for a in aux_marcados])
+            lista_finais = [a.upper() for a in aux_marcados]
+            if aux_extra.strip():
+                novos_aux = [a.strip().upper() for a in aux_extra.split(",") if a.strip()]
+                lista_finais.extend(novos_aux)
+
+            auxiliares_str = ", ".join(lista_finais)
 
             registro = {
                 "data": data_prod.strftime("%d/%m/%Y"),
