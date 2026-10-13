@@ -71,6 +71,13 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
+# Lista Global de Auxiliares conhecidos para busca rápida no Multiselect
+TODOS_AUXILIARES_GERAL = sorted(list(set([
+    "LUAN", "EVERSON", "BRENDON", "ANDRIALISSON", "MAYK", 
+    "DENILSON", "ANDREY", "NERISMAR", "SAMUEL", "JEFFERSON", 
+    "FRANCISCO", "DAVI", "ALISSON", "EWERTON", "NAVARRO"
+])))
+
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
@@ -339,19 +346,14 @@ elif st.session_state.pagina == 2:
 
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
         
-        # Multiselect para selecionar os auxiliares cadastrados
+        # Garante que as opções do multiselect tenham todos os auxiliares possíveis da fábrica
+        opcoes_multiselect = sorted(list(set(TODOS_AUXILIARES_GERAL + aux_fixos_sugeridos)))
+
         aux_marcados = st.multiselect(
             "Auxiliares de empacotamento:", 
-            options=aux_fixos_sugeridos, 
+            options=opcoes_multiselect, 
             default=aux_fixos_sugeridos, 
             key=f"multiselect_aux_{maq_sel}"
-        )
-
-        # Campo de texto para adicionar novo auxiliar / novato de forma simples e direta
-        aux_extra = st.text_input(
-            "Outro Auxiliar / Novato (opcional):", 
-            placeholder="Ex: ANDREY, NAVARRO", 
-            key=f"input_extra_aux_{maq_sel}"
         )
 
         st.markdown("")
@@ -363,12 +365,7 @@ elif st.session_state.pagina == 2:
                 if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
                     ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
 
-            lista_finais = [a.upper() for a in aux_marcados]
-            if aux_extra.strip():
-                novos_aux = [a.strip().upper() for a in aux_extra.split(",") if a.strip()]
-                lista_finais.extend(novos_aux)
-
-            auxiliares_str = ", ".join(lista_finais)
+            auxiliares_str = ", ".join([a.upper() for a in aux_marcados])
 
             registro = {
                 "data": data_prod.strftime("%d/%m/%Y"),
