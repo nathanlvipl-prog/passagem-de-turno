@@ -35,7 +35,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento de Equipes por Máquina
+# Mapeamento Oficial Atualizado de Equipes por Máquina
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -43,15 +43,15 @@ EQUIPE_FIXA_MAQUINAS = {
     },
     "VOLPACK": {
         "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
-        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "DENILSON SILVA DOS SANTOS", "ADSON ANDREY DE MOURA BATISTA"]
+        "auxiliares": ["EVERSON ZAIRO SILVA DE ARAÚJO", "BRENDON HERISON BARBOSA DE OLIVEIRA", "ANDRIALISSON", "MAYK"]
     },
     "EVOLUTION 01": {
         "operador": "JOEDSON DOS SANTOS ARAÚJO",
-        "auxiliares": []
+        "auxiliares": ["DENILSON SILVA DOS SANTOS", "ANDREY DE MOURA BATISTA", "NERISMAR ALVES CARVALHO"]
     },
     "EVOLUTION 02": {
         "operador": "WEVERTON BRUNO DE LIMA",
-        "auxiliares": ["LUAN DE LIMA SILVA", "BRENDON HERISON BARBOSA DE OLIVEIRA", "NERISMAR ALVES CARVALHO", "SAMUEL DEYVID SILVA DE LIMA"]
+        "auxiliares": ["BRENDON HERISON BARBOSA DE OLIVEIRA", "SAMUEL DEYVID SILVA DE LIMA", "ANDREY"]
     },
     "LINEA 01": {
         "operador": "ÍTALO SILVA DO NASCIMENTO",
@@ -59,15 +59,15 @@ EQUIPE_FIXA_MAQUINAS = {
     },
     "LINEA 02": {
         "operador": "",
-        "auxiliares": ["ALISSON FORTUNATO DA SILVA", "EWERTON GOMES FERREIRA"]
+        "auxiliares": []
     },
     "BOSCH 16": {
         "operador": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
-        "auxiliares": []
+        "auxiliares": ["ALISSON FORTUNATO DA SILVA"]
     },
     "LEEPACK": {
         "operador": "JOÃO VICTOR BARBOSA DA SILVA",
-        "auxiliares": []
+        "auxiliares": ["EWERTON GOMES FERREIRA"]
     }
 }
 
@@ -328,7 +328,6 @@ elif st.session_state.pagina == 2:
 
         st.markdown("---")
 
-        # Seção sem form para permitir digitação instantânea do auxiliar manual
         st.markdown("##### 3. Perdas e Equipe da Linha")
         d1, d2, d3 = st.columns(3)
         with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
@@ -341,7 +340,6 @@ elif st.session_state.pagina == 2:
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
         opcoes_aux = aux_fixos_sugeridos + ["➕ Outros / Novato (Digitar)"]
         
-        # Chave dinâmica isolada por máquina para evitar que os auxiliares fiquem presos ao trocar
         aux_marcados = st.multiselect(
             "Auxiliares de Empacotamento Presenciados:", 
             options=opcoes_aux, 
