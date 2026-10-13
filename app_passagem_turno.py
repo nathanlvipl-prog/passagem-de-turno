@@ -35,7 +35,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares
+# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares (Apolonio na Linea 01)
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -55,7 +55,7 @@ EQUIPE_FIXA_MAQUINAS = {
     },
     "LINEA 01": {
         "operador": "ÍTALO SILVA DO NASCIMENTO",
-        "auxiliares": ["JEFFERSON", "FRANCISCO", "DAVI"]
+        "auxiliares": ["JEFFERSON", "APOLONIO", "DAVI"]
     },
     "LINEA 02": {
         "operador": "",
@@ -71,11 +71,11 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Lista Global de Auxiliares conhecidos para busca rápida no Multiselect
+# Lista Global de Auxiliares conhecidos (sem Navarro e com Apolonio)
 TODOS_AUXILIARES_GERAL = sorted(list(set([
     "LUAN", "EVERSON", "BRENDON", "ANDRIALISSON", "MAYK", 
     "DENILSON", "ANDREY", "NERISMAR", "SAMUEL", "JEFFERSON", 
-    "FRANCISCO", "DAVI", "ALISSON", "EWERTON", "NAVARRO"
+    "APOLONIO", "DAVI", "ALISSON", "EWERTON"
 ])))
 
 MAQUINAS_POR_SETOR = {
@@ -324,7 +324,8 @@ elif st.session_state.pagina == 2:
                 st.session_state.lista_ocorrencias_input.pop(i)
             st.rerun()
 
-        if st.button("➕ Adicionar Ocorrência", use_container_width=False):
+        # Botão alterado para exibir apenas o símbolo de + conforme solicitado
+        if st.button("➕", use_container_width=False):
             st.session_state.lista_ocorrencias_input.append({
                 "id": st.session_state.next_oc_id, 
                 "codigo": "Nenhuma", 
@@ -346,7 +347,7 @@ elif st.session_state.pagina == 2:
 
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
         
-        # Garante que as opções do multiselect tenham todos os auxiliares possíveis da fábrica
+        # Opções combinando os fixos e a lista geral atualizada da fábrica
         opcoes_multiselect = sorted(list(set(TODOS_AUXILIARES_GERAL + aux_fixos_sugeridos)))
 
         aux_marcados = st.multiselect(
