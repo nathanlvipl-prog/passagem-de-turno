@@ -71,7 +71,7 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Lista Global de Auxiliares conhecidos (sem Navarro e com Apolonio)
+# Lista Global de Auxiliares conhecidos
 TODOS_AUXILIARES_GERAL = sorted(list(set([
     "LUAN", "EVERSON", "BRENDON", "ANDRIALISSON", "MAYK", 
     "DENILSON", "ANDREY", "NERISMAR", "SAMUEL", "JEFFERSON", 
@@ -324,7 +324,6 @@ elif st.session_state.pagina == 2:
                 st.session_state.lista_ocorrencias_input.pop(i)
             st.rerun()
 
-        # Botão alterado para exibir apenas o símbolo de + conforme solicitado
         if st.button("➕", use_container_width=False):
             st.session_state.lista_ocorrencias_input.append({
                 "id": st.session_state.next_oc_id, 
@@ -346,8 +345,6 @@ elif st.session_state.pagina == 2:
         operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
         aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
-        
-        # Opções combinando os fixos e a lista geral atualizada da fábrica
         opcoes_multiselect = sorted(list(set(TODOS_AUXILIARES_GERAL + aux_fixos_sugeridos)))
 
         aux_marcados = st.multiselect(
@@ -357,8 +354,16 @@ elif st.session_state.pagina == 2:
             key=f"multiselect_aux_{maq_sel}"
         )
 
+        st.markdown("##### 📝 OBSERVAÇÕES:")
+        obs_texto = st.text_area(
+            "Observações (detalhe aqui qualquer ocorrência, problema ou ponto de atenção):", 
+            placeholder="Digite aqui observações relevantes sobre o turno...", 
+            height=100, 
+            key=f"obs_{maq_sel}"
+        )
+
         st.markdown("")
-        btn_salvar_envase = st.button("💾 ENVIAR PARA O REGISTRO E GERAR RESUMO", use_container_width=True)
+        btn_salvar_envase = st.button("💾 ENVIAR", use_container_width=True)
 
         if btn_salvar_envase:
             ocorrencias_coletadas = []
@@ -381,6 +386,7 @@ elif st.session_state.pagina == 2:
                 "desp_primaria": desp_primaria,
                 "operador_linha": operador_linha,
                 "auxiliares": auxiliares_str,
+                "observacoes": obs_texto.strip(),
                 "operador_sistema": st.session_state.operador_nome_completo
             }
             st.session_state.registros_completos.append(registro)
@@ -399,6 +405,8 @@ elif st.session_state.pagina == 2:
             with col_m3:
                 lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: PA 1096176")
 
+            obs_m = st.text_area("Observações:", placeholder="Detalhes opcionais...")
+
             btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()}", use_container_width=True)
 
             if btn_salvar_m:
@@ -413,6 +421,7 @@ elif st.session_state.pagina == 2:
                         "lote": lote_m.strip(),
                         "producao": qtd_batidas,
                         "ocorrencias": [],
+                        "observacoes": obs_m.strip(),
                         "operador_sistema": st.session_state.operador_nome_completo
                     }
                     st.session_state.registros_completos.append(registro)
@@ -440,6 +449,8 @@ elif st.session_state.pagina == 2:
                     msg_lines.append(f"• Produto: {ev['produto']} | Lote: {ev['lote']}")
                 for oc in ev['ocorrencias']:
                     msg_lines.append(f"• {oc}")
+                if ev.get("observacoes"):
+                    msg_lines.append(f"• Obs: {ev['observacoes']}")
                 msg_lines.append("")
         else:
             msg_lines.append("*Volpack:* 20.640")
