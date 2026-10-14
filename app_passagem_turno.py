@@ -49,7 +49,7 @@ CADASTRO_COLABORADORES = {
     "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares (Apolonio na Linea 01)
+# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares
 EQUIPE_FIXA_MAQUINAS = {
     "M028": {
         "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
@@ -263,45 +263,44 @@ elif st.session_state.pagina == 2:
         detalhes_produtos = {}
 
         if df_ops_live is not None and not df_ops_live.empty:
-            # Normaliza o nome da máquina selecionada (remove espaços e hífens, ex: "EVOLUTION 02" -> "EVOLUTION02")
-            maq_busca_norm = maq_sel.replace("-", "").replace(" ", "").upper()
+            cols = list(df_ops_live.columns)
+            maq_norm_busca = maq_sel.replace("-", "").replace(" ", "").upper()
             
-            for _, row in df_ops_live.iterrows():
-                row_texto_unido = "".join([str(val).replace("-", "").replace(" ", "").upper() for val in row.values if pd.notna(val)])
-                
-                if maq_busca_norm in row_texto_unido:
-                    valores_linha = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() and str(val).strip().lower() not in ["nan", "none", "false", "true"]]
-                    
-                    p_val = ""
-                    l_val = ""
-                    
-                    for val in valores_linha:
-                        val_norm = val.replace("-", "").replace(" ", "").upper()
-                        if maq_busca_norm in val_norm:
-                            continue
+            # Varre cada coluna para achar onde está a máquina e extrai SKU(+1), Produto(+2) e Lote PA(+3)
+            for idx, col in enumerate(cols):
+                for _, row in df_ops_live.iterrows():
+                    val_celula = str(row.get(col, "")).replace("-", "").replace(" ", "").upper()
+                    if maq_norm_busca in val_celula:
+                        # Coluna imediata à frente ou nas próximas deve conter o produto
+                        p_val = ""
+                        l_val = ""
                         
-                        # Produto: texto longo que não seja número puro
-                        if not p_val and len(val) > 3 and not val.replace(".", "").isdigit():
-                            p_val = val
-                        # Lote PA: número com 6 a 8 dígitos (após já ter encontrado o produto)
-                        elif p_val and not l_val and val.isdigit() and len(val) in [6, 7, 8]:
-                            l_val = val
-                            break
-                    
-                    if p_val and p_val not in produtos_encontrados:
-                        produtos_encontrados.append(p_val)
+                        for offset in range(1, 5):
+                            if idx + offset < len(cols):
+                                cell_val = str(row.get(cols[idx + offset], "")).strip()
+                                if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
+                                    # Se for texto descritivo longo (Produto)
+                                    if not p_val and len(cell_val) > 4 and not cell_val.replace(".", "").isdigit():
+                                        p_val = cell_val
+                                    # Se já temos o produto, o próximo número com 6+ dígitos é o Lote PA
+                                    elif p_val and not l_val and cell_val.isdigit() and len(cell_val) >= 6:
+                                        l_val = cell_val
+                                        break
                         
-                        # Extração automática da gramatura (ex: 20G, 200G, 1KG)
-                        gramatura_extraida = ""
-                        match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
-                        if match_g:
-                            gramatura_extraida = match_g.group(1).upper().replace(" ", "")
+                        if p_val and p_val not in produtos_encontrados:
+                            produtos_encontrados.append(p_val)
+                            
+                            # Extração automática da gramatura (ex: 20G, 200G, 1KG)
+                            gramatura_extraida = ""
+                            match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
+                            if match_g:
+                                gramatura_extraida = match_g.group(1).upper().replace(" ", "")
 
-                        detalhes_produtos[p_val] = {
-                            "lote": l_val,
-                            "marca": "3CORAÇÕES",
-                            "gramatura": gramatura_extraida
-                        }
+                            detalhes_produtos[p_val] = {
+                                "lote": l_val,
+                                "marca": "3CORAÇÕES",
+                                "gramatura": gramatura_extraida
+                            }
 
         if not produtos_encontrados:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
