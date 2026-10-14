@@ -26,11 +26,29 @@ def calcular_turno(dt=None):
 GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
 GSHEET_METAS_URL = "https://docs.google.com/spreadsheets/d/1DMMZL2lYjUF3HXh5q9vBnqz6AbiJgyknfKMwkYy8mZY/export?format=csv&gid=0"
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=15)
 def carregar_dados_externos(url):
-    """Carrega dados diretamente de planilhas do Google Sheets em tempo real"""
+    """Carrega dados padrão de planilhas do Google Sheets"""
     try:
         df = pd.read_csv(url, dtype=str)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+    except Exception:
+        return None
+
+@st.cache_data(ttl=15)
+def carregar_metas_inteligente(url):
+    """Localiza automaticamente o cabeçalho da tabela de metas independentemente de linhas em branco"""
+    try:
+        df_raw = pd.read_csv(url, header=None, dtype=str)
+        header_row = 0
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join([str(v) for v in row.values])
+            if "LINHA" in row_str.upper() or "MAQUINA" in row_str.upper():
+                header_row = idx
+                break
+        
+        df = pd.read_csv(url, header=header_row, dtype=str)
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception:
@@ -239,7 +257,7 @@ elif st.session_state.pagina == 2:
         st.subheader("📝 Controle de empacotamentos")
 
         df_ops_live = carregar_dados_externos(GSHEET_OP_URL)
-        df_metas_live = carregar_dados_externos(GSHEET_METAS_URL)
+        df_metas_live = carregar_metas_inteligente(GSHEET_METAS_URL)
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -259,11 +277,11 @@ elif st.session_state.pagina == 2:
 
         if df_ops_live is not None and not df_ops_live.empty:
             cols = list(df_ops_live.columns)
-            maq_norm_busca = maq_sel.replace("-", "").replace(" ", "").upper()
+            maq_norm_busca = re.sub(r'[^A-Z0-9]', '', maq_sel.upper())
             
             for idx, col in enumerate(cols):
                 for _, row in df_ops_live.iterrows():
-                    val_celula = str(row.get(col, "")).replace("-", "").replace(" ", "").upper()
+                    val_celula = re.sub(r'[^A-Z0-9]', '', str(row.get(col, "")).upper())
                     if maq_norm_busca in val_celula:
                         p_val = ""
                         l_val = ""
@@ -305,30 +323,33 @@ elif st.session_state.pagina == 2:
         marca_produto = st.text_input("Marca:", value=dados_p["marca"])
         gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
-        # --- BUSCA DINÂMICA DA META DA PLANILHA EXTERNA ---
+        # --- BUSCA INTELIGENTE DA META NA PLANILHA ---
         meta_sugerida = 0
         if df_metas_live is not None and not df_metas_live.empty:
-            # Procura pelas colunas correspondentes de máquina e meta
-            col_maq_meta = [c for c in df_metas_live.columns if any(k in c.lower() for k in ["linha", "máquina", "maquina"])]
-            col_val_meta = [c for c in df_metas_live.columns if any(k in c.lower() for k in ["meta", "planejada"])]
-            
-            if col_maq_meta and col_val_meta:
-                c_maq_col = col_maq_meta[0]
-                c_val_col = col_val_meta[0]
+            maq_key = re.sub(r'[^A-Z0-9]', '', maq_sel.upper())
+            if "EVOLUTION" in maq_sel.upper():
+                maq_key = maq_key.replace("EVOLUTION", "EVO")
+
+            for _, row in df_metas_live.iterrows():
+                linha_valores = [re.sub(r'[^A-Z0-9]', '', str(v).upper()) for v in row.values]
                 
-                for _, row in df_metas_live.iterrows():
-                    val_linha = str(row.get(c_maq_col, "")).replace("-", "").replace(" ", "").upper()
-                    if maq_sel.replace("-", "").replace(" ", "").upper() in val_linha:
-                        meta_str = str(row.get(c_val_col, "0")).replace(".", "").replace(",", "").strip()
-                        if meta_str.isdigit():
-                            meta_sugerida = int(meta_str)
+                if any(maq_key in v or v in maq_key for v in linha_valores if v):
+                    for val in row.values:
+                        val_str = str(val).replace(".", "").replace(",", "").strip()
+                        if val_str.isdigit() and len(val_str) >= 3:
+                            meta_sugerida = int(val_str)
+                            break
+                    if meta_sugerida > 0:
                         break
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
-        with tm1: meta_prod = st.number_input("Meta (unid):", value=meta_sugerida, step=100)
-        with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
-        with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
+        with tm1: 
+            meta_prod = st.number_input("Meta (unid):", value=meta_sugerida, step=100, key=f"meta_val_{maq_sel}_{meta_sugerida}")
+        with tm2: 
+            tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
+        with tm3: 
+            sem_prog = st.checkbox("Máquina Sem Programação")
 
         st.markdown("---")
         st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
