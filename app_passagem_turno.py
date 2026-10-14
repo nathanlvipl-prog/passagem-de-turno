@@ -37,22 +37,27 @@ def carregar_dados_externos(url):
         return None
 
 @st.cache_data(ttl=15)
-def carregar_metas_inteligente(url):
-    """Localiza automaticamente o cabeçalho e estrutura da tabela de metas"""
+def carregar_metas_direto(url, nome_maquina):
+    """Varre todas as células da planilha de metas de forma robusta e extrai o valor correspondente"""
     try:
         df_raw = pd.read_csv(url, header=None, dtype=str)
-        header_row = 0
-        for idx, row in df_raw.iterrows():
-            row_str = " ".join([str(v) for v in row.values])
-            if "LINHA" in row_str.upper() or "MAQUINA" in row_str.upper():
-                header_row = idx
-                break
-        
-        df = pd.read_csv(url, header=header_row, dtype=str)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
+        maq_key = re.sub(r'[^A-Z0-9]', '', nome_maquina.upper())
+        if "EVOLUTION" in nome_maquina.upper():
+            maq_key = maq_key.replace("EVOLUTION", "EVO")
+
+        for _, row in df_raw.iterrows():
+            row_list = [str(v).strip() for v in row.values if pd.notna(v)]
+            row_str_unido = " ".join([re.sub(r'[^A-Z0-9]', '', s.upper()) for s in row_list])
+            
+            if maq_key in row_str_unido:
+                # Procura dentro dos valores da linha qual deles é um número válido de meta (>= 3 dígitos)
+                for val in row_list:
+                    val_limpo = re.sub(r'[^0-9]', '', val)
+                    if val_limpo and len(val_limpo) >= 3:
+                        return int(val_limpo)
+        return 0
     except Exception:
-        return None
+        return 0
 
 # Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
@@ -257,7 +262,6 @@ elif st.session_state.pagina == 2:
         st.subheader("📝 Controle de empacotamentos")
 
         df_ops_live = carregar_dados_externos(GSHEET_OP_URL)
-        df_metas_live = carregar_metas_inteligente(GSHEET_METAS_URL)
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -323,29 +327,8 @@ elif st.session_state.pagina == 2:
         marca_produto = st.text_input("Marca:", value=dados_p["marca"])
         gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
-        # --- BUSCA PRECISA DA META NA PLANILHA DE METAS ---
-        meta_sugerida = 0
-        if df_metas_live is not None and not df_metas_live.empty:
-            maq_key = re.sub(r'[^A-Z0-9]', '', maq_sel.upper())
-            if "EVOLUTION" in maq_sel.upper():
-                maq_key = maq_key.replace("EVOLUTION", "EVO")
-
-            cols_metas = list(df_metas_live.columns)
-            for _, row in df_metas_live.iterrows():
-                for idx_c, col_c in enumerate(cols_metas):
-                    celula_texto = re.sub(r'[^A-Z0-9]', '', str(row.get(col_c, "")).upper())
-                    if maq_key and maq_key in celula_texto:
-                        # Varre as colunas à direita para encontrar o primeiro número válido de meta
-                        for offset in range(1, len(cols_metas) - idx_c):
-                            val_candidato = str(row.get(cols_metas[idx_c + offset], "")).strip()
-                            val_limpo = re.sub(r'[^0-9]', '', val_candidato)
-                            if val_limpo and len(val_limpo) >= 3:
-                                meta_sugerida = int(val_limpo)
-                                break
-                        if meta_sugerida > 0:
-                            break
-                if meta_sugerida > 0:
-                    break
+        # --- BUSCA ROBUSTA DA META NA PLANILHA ---
+        meta_sugerida = carregar_metas_direto(GSHEET_METAS_URL, maq_sel)
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
