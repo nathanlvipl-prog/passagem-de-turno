@@ -22,12 +22,13 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
-# Link dinâmico da Planilha OP Teste (Exportação CSV com o GID correto)
+# Links dinâmicos das Planilhas Corporativas (Exportação CSV)
 GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
+GSHEET_METAS_URL = "https://docs.google.com/spreadsheets/d/1DMMZL2lYjUF3HXh5q9vBnqz6AbiJgyknfKMwkYy8mZY/export?format=csv&gid=0"
 
 @st.cache_data(ttl=30)
-def carregar_base_ops(url):
-    """Carrega os dados diretamente da planilha corporativa em tempo real"""
+def carregar_dados_externos(url):
+    """Carrega dados diretamente de planilhas do Google Sheets em tempo real"""
     try:
         df = pd.read_csv(url, dtype=str)
         df.columns = [str(c).strip() for c in df.columns]
@@ -237,14 +238,8 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
-        df_ops_live = carregar_base_ops(GSHEET_OP_URL)
-
-        with st.expander("📋 Tabela de Referência de OPs Oficial"):
-            if df_ops_live is not None and not df_ops_live.empty:
-                st.dataframe(df_ops_live, use_container_width=True)
-                st.info("ℹ️ Base de OPs carregada automaticamente da planilha corporativa.")
-            else:
-                st.warning("⚠️ Não foi possível carregar os dados da planilha no momento.")
+        df_ops_live = carregar_dados_externos(GSHEET_OP_URL)
+        df_metas_live = carregar_dados_externos(GSHEET_METAS_URL)
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -266,12 +261,10 @@ elif st.session_state.pagina == 2:
             cols = list(df_ops_live.columns)
             maq_norm_busca = maq_sel.replace("-", "").replace(" ", "").upper()
             
-            # Varre cada coluna para achar onde está a máquina e extrai SKU(+1), Produto(+2) e Lote PA(+3)
             for idx, col in enumerate(cols):
                 for _, row in df_ops_live.iterrows():
                     val_celula = str(row.get(col, "")).replace("-", "").replace(" ", "").upper()
                     if maq_norm_busca in val_celula:
-                        # Coluna imediata à frente ou nas próximas deve conter o produto
                         p_val = ""
                         l_val = ""
                         
@@ -279,10 +272,8 @@ elif st.session_state.pagina == 2:
                             if idx + offset < len(cols):
                                 cell_val = str(row.get(cols[idx + offset], "")).strip()
                                 if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
-                                    # Se for texto descritivo longo (Produto)
                                     if not p_val and len(cell_val) > 4 and not cell_val.replace(".", "").isdigit():
                                         p_val = cell_val
-                                    # Se já temos o produto, o próximo número com 6+ dígitos é o Lote PA
                                     elif p_val and not l_val and cell_val.isdigit() and len(cell_val) >= 6:
                                         l_val = cell_val
                                         break
@@ -290,7 +281,6 @@ elif st.session_state.pagina == 2:
                         if p_val and p_val not in produtos_encontrados:
                             produtos_encontrados.append(p_val)
                             
-                            # Extração automática da gramatura (ex: 20G, 200G, 1KG)
                             gramatura_extraida = ""
                             match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
                             if match_g:
@@ -315,9 +305,28 @@ elif st.session_state.pagina == 2:
         marca_produto = st.text_input("Marca:", value=dados_p["marca"])
         gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
+        # --- BUSCA DINÂMICA DA META DA PLANILHA EXTERNA ---
+        meta_sugerida = 0
+        if df_metas_live is not None and not df_metas_live.empty:
+            # Procura pelas colunas correspondentes de máquina e meta
+            col_maq_meta = [c for c in df_metas_live.columns if any(k in c.lower() for k in ["linha", "máquina", "maquina"])]
+            col_val_meta = [c for c in df_metas_live.columns if any(k in c.lower() for k in ["meta", "planejada"])]
+            
+            if col_maq_meta and col_val_meta:
+                c_maq_col = col_maq_meta[0]
+                c_val_col = col_val_meta[0]
+                
+                for _, row in df_metas_live.iterrows():
+                    val_linha = str(row.get(c_maq_col, "")).replace("-", "").replace(" ", "").upper()
+                    if maq_sel.replace("-", "").replace(" ", "").upper() in val_linha:
+                        meta_str = str(row.get(c_val_col, "0")).replace(".", "").replace(",", "").strip()
+                        if meta_str.isdigit():
+                            meta_sugerida = int(meta_str)
+                        break
+
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
-        with tm1: meta_prod = st.number_input("Meta (unid):", value=0, step=100)
+        with tm1: meta_prod = st.number_input("Meta (unid):", value=meta_sugerida, step=100)
         with tm2: tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
         with tm3: sem_prog = st.checkbox("Máquina Sem Programação")
 
@@ -412,6 +421,7 @@ elif st.session_state.pagina == 2:
                 "maquina": maq_sel,
                 "produto": f"{desc_produto} ({gramatura_prod})" if gramatura_prod else desc_produto,
                 "lote": lote_prod if not sem_prog else "-",
+                "meta": meta_prod,
                 "producao": tot_prod if not sem_prog else "Sem programação",
                 "ocorrencias": ocorrencias_coletadas,
                 "desp_primaria": desp_primaria,
@@ -475,7 +485,7 @@ elif st.session_state.pagina == 2:
         if envases:
             for ev in envases:
                 prod_str = f"{ev['producao']:,}".replace(",", ".") if isinstance(ev['producao'], (int, float)) else ev['producao']
-                msg_lines.append(f"*{ev['maquina']}:* {prod_str}")
+                msg_lines.append(f"*{ev['maquina']}:* {prod_str} / Meta: {ev.get('meta', 0):,}".replace(",", "."))
                 if ev['produto'] != "Sem programação":
                     msg_lines.append(f"• Produto: {ev['produto']} | Lote: {ev['lote']}")
                 for oc in ev['ocorrencias']:
