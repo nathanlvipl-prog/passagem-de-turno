@@ -38,7 +38,7 @@ def carregar_dados_externos(url):
 
 @st.cache_data(ttl=15)
 def carregar_metas_inteligente(url):
-    """Localiza automaticamente o cabeçalho da tabela de metas independentemente de linhas em branco"""
+    """Localiza automaticamente o cabeçalho e estrutura da tabela de metas"""
     try:
         df_raw = pd.read_csv(url, header=None, dtype=str)
         header_row = 0
@@ -323,24 +323,29 @@ elif st.session_state.pagina == 2:
         marca_produto = st.text_input("Marca:", value=dados_p["marca"])
         gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
-        # --- BUSCA INTELIGENTE DA META NA PLANILHA ---
+        # --- BUSCA PRECISA DA META NA PLANILHA DE METAS ---
         meta_sugerida = 0
         if df_metas_live is not None and not df_metas_live.empty:
             maq_key = re.sub(r'[^A-Z0-9]', '', maq_sel.upper())
             if "EVOLUTION" in maq_sel.upper():
                 maq_key = maq_key.replace("EVOLUTION", "EVO")
 
+            cols_metas = list(df_metas_live.columns)
             for _, row in df_metas_live.iterrows():
-                linha_valores = [re.sub(r'[^A-Z0-9]', '', str(v).upper()) for v in row.values]
-                
-                if any(maq_key in v or v in maq_key for v in linha_valores if v):
-                    for val in row.values:
-                        val_str = str(val).replace(".", "").replace(",", "").strip()
-                        if val_str.isdigit() and len(val_str) >= 3:
-                            meta_sugerida = int(val_str)
+                for idx_c, col_c in enumerate(cols_metas):
+                    celula_texto = re.sub(r'[^A-Z0-9]', '', str(row.get(col_c, "")).upper())
+                    if maq_key and maq_key in celula_texto:
+                        # Varre as colunas à direita para encontrar o primeiro número válido de meta
+                        for offset in range(1, len(cols_metas) - idx_c):
+                            val_candidato = str(row.get(cols_metas[idx_c + offset], "")).strip()
+                            val_limpo = re.sub(r'[^0-9]', '', val_candidato)
+                            if val_limpo and len(val_limpo) >= 3:
+                                meta_sugerida = int(val_limpo)
+                                break
+                        if meta_sugerida > 0:
                             break
-                    if meta_sugerida > 0:
-                        break
+                if meta_sugerida > 0:
+                    break
 
         st.markdown("##### 2. Produção e Ocorrências")
         tm1, tm2, tm3 = st.columns(3)
