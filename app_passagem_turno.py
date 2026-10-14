@@ -7,6 +7,9 @@ import pandas as pd
 # ---------------------------------------------------------
 FUSO_BR = timezone(timedelta(hours=-3))
 
+# Link Atualizado da Planilha OP Teste
+LINK_OP_TESTE = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/edit?gid=607447606#gid=607447606"
+
 def obter_datetime_br():
     return datetime.now(FUSO_BR)
 
@@ -431,6 +434,9 @@ elif st.session_state.pagina == 2:
 
     elif st.session_state.area_atuacao == "Gestão":
         st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
+
+        # Link de referência rápida da planilha de OPs
+        st.info(f"🔗 **Planilha OP Teste de Referência:** [Abrir Planilha Google]({LINK_OP_TESTE})")
 
         data_f_str = dt_agora.strftime("%d.%m")
         turno_letra = turno_atual.split()[-1]
