@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import datetime, timezone, timedelta
 import pandas as pd
+import re
 
 # ---------------------------------------------------------
 # CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
@@ -262,50 +263,45 @@ elif st.session_state.pagina == 2:
         detalhes_produtos = {}
 
         if df_ops_live is not None and not df_ops_live.empty:
-            cols = list(df_ops_live.columns)
+            # Normaliza o nome da máquina selecionada (remove espaços e hífens, ex: "EVOLUTION 02" -> "EVOLUTION02")
+            maq_busca_norm = maq_sel.replace("-", "").replace(" ", "").upper()
             
-            # Varre cada coluna procurando o bloco exato da máquina selecionada
-            for idx, col in enumerate(cols):
-                for _, row in df_ops_live.iterrows():
-                    val_celula = str(row.get(col, "")).upper().strip()
-                    if maq_sel.upper().replace(" ", "") in val_celula.replace(" ", ""):
-                        # Ordem exata dos blocos na planilha: [Máquina] [SKU] [Produto] [Lote PA]
-                        p_val = ""
-                        l_val = ""
+            for _, row in df_ops_live.iterrows():
+                row_texto_unido = "".join([str(val).replace("-", "").replace(" ", "").upper() for val in row.values if pd.notna(val)])
+                
+                if maq_busca_norm in row_texto_unido:
+                    valores_linha = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() and str(val).strip().lower() not in ["nan", "none", "false", "true"]]
+                    
+                    p_val = ""
+                    l_val = ""
+                    
+                    for val in valores_linha:
+                        val_norm = val.replace("-", "").replace(" ", "").upper()
+                        if maq_busca_norm in val_norm:
+                            continue
                         
-                        # Procura nas colunas à direita pelo produto e lote PA (ignorando o SKU que vem primeiro)
-                        encontrou_sku = False
-                        for offset in range(1, 6):
-                            if idx + offset < len(cols):
-                                cell_val = str(row.get(cols[idx + offset], "")).strip()
-                                if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
-                                    # Se for um número curto de 5-7 dígitos e ainda não pegamos SKU, é o SKU
-                                    if not encontrou_sku and cell_val.isdigit() and len(cell_val) <= 8:
-                                        encontrou_sku = True
-                                        continue
-                                    # Se já passou do SKU (ou encontrou texto longo), é o Produto
-                                    elif not p_val and len(cell_val) > 3 and not cell_val.isdigit():
-                                        p_val = cell_val
-                                    # O valor seguinte que for numérico com 7+ dígitos é o Lote PA
-                                    elif p_val and not l_val and (cell_val.isdigit() or len(cell_val) >= 6):
-                                        l_val = cell_val
-                                        break
+                        # Produto: texto longo que não seja número puro
+                        if not p_val and len(val) > 3 and not val.replace(".", "").isdigit():
+                            p_val = val
+                        # Lote PA: número com 6 a 8 dígitos (após já ter encontrado o produto)
+                        elif p_val and not l_val and val.isdigit() and len(val) in [6, 7, 8]:
+                            l_val = val
+                            break
+                    
+                    if p_val and p_val not in produtos_encontrados:
+                        produtos_encontrados.append(p_val)
                         
-                        if p_val and p_val not in produtos_encontrados:
-                            produtos_encontrados.append(p_val)
-                            
-                            # Extração automática de gramatura do nome do produto (ex: 200G, 1KG, 15G, 100G)
-                            gramatura_extraida = ""
-                            import re
-                            match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
-                            if match_g:
-                                gramatura_extraida = match_g.group(1).upper().replace(" ", "")
+                        # Extração automática da gramatura (ex: 20G, 200G, 1KG)
+                        gramatura_extraida = ""
+                        match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
+                        if match_g:
+                            gramatura_extraida = match_g.group(1).upper().replace(" ", "")
 
-                            detalhes_produtos[p_val] = {
-                                "lote": l_val,
-                                "marca": "3CORAÇÕES",
-                                "gramatura": gramatura_extraida
-                            }
+                        detalhes_produtos[p_val] = {
+                            "lote": l_val,
+                            "marca": "3CORAÇÕES",
+                            "gramatura": gramatura_extraida
+                        }
 
         if not produtos_encontrados:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
@@ -435,7 +431,7 @@ elif st.session_state.pagina == 2:
         with st.form("form_mistura_premix"):
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
-                prod_m = st.text_input("Descrição du Produto:", placeholder="Ex: Café com leite tradicional")
+                prod_m = st.text_input("Descrição do Produto:", placeholder="Ex: Café com leite tradicional")
             with col_m2:
                 qtd_batidas = st.number_input(f"Qtd de {tipo_label}s / Batidas:", min_value=1, value=1, step=1)
             with col_m3:
