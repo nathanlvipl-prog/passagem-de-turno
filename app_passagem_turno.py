@@ -38,23 +38,25 @@ def carregar_dados_externos(url):
 
 @st.cache_data(ttl=15)
 def carregar_metas_direto(url, nome_maquina):
-    """Varre todas as células da planilha de metas de forma robusta e extrai o valor correspondente"""
+    """Lê a planilha de metas focando na estrutura exata de colunas (Linha/Máquina e Meta)"""
     try:
         df_raw = pd.read_csv(url, header=None, dtype=str)
-        maq_key = re.sub(r'[^A-Z0-9]', '', nome_maquina.upper())
-        if "EVOLUTION" in nome_maquina.upper():
-            maq_key = maq_key.replace("EVOLUTION", "EVO")
-
-        for _, row in df_raw.iterrows():
-            row_list = [str(v).strip() for v in row.values if pd.notna(v)]
-            row_str_unido = " ".join([re.sub(r'[^A-Z0-9]', '', s.upper()) for s in row_list])
+        maq_busca = re.sub(r'[^A-Z0-9]', '', nome_maquina.upper())
+        
+        for index, row in df_raw.iterrows():
+            linha_texto = " ".join([str(v) for v in row.values if pd.notna(v)])
+            linha_limpa = re.sub(r'[^A-Z0-9]', '', linha_texto.upper())
             
-            if maq_key in row_str_unido:
-                # Procura dentro dos valores da linha qual deles é um número válido de meta (>= 3 dígitos)
-                for val in row_list:
-                    val_limpo = re.sub(r'[^0-9]', '', val)
-                    if val_limpo and len(val_limpo) >= 3:
-                        return int(val_limpo)
+            # Procura se o nome da máquina está nesta linha
+            if maq_busca in linha_limpa or (maq_busca == "LEEPACK" and "LEEPACK" in linha_limpa):
+                # Varre as colunas da mesma linha para encontrar o valor numérico da meta
+                for val in row.values:
+                    if pd.notna(val):
+                        val_str = str(val).strip()
+                        # Remove pontos de milhar e verifica se é número válido (ex: 10.000 ou 25000)
+                        val_num_limpo = re.sub(r'[^0-9]', '', val_str)
+                        if val_num_limpo and val_num_limpo.isdigit() and len(val_num_limpo) >= 3:
+                            return int(val_num_limpo)
         return 0
     except Exception:
         return 0
