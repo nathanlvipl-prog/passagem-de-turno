@@ -24,12 +24,13 @@ def calcular_turno(dt=None):
 # Link dinâmico da Planilha OP Teste (Exportação CSV com o GID correto)
 GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def carregar_base_ops(url):
     """Carrega os dados diretamente da planilha corporativa em tempo real"""
     try:
         df = pd.read_csv(url, dtype=str)
-        df.columns = [c.strip().upper() for c in df.columns]
+        # Remove espaços em branco dos nomes das colunas
+        df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception:
         return None
@@ -237,7 +238,6 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
-        # Carregamento dinâmico da planilha corporativa via CSV
         df_ops_live = carregar_base_ops(GSHEET_OP_URL)
 
         with st.expander("📋 Tabela de Referência de OPs Oficial"):
@@ -245,7 +245,7 @@ elif st.session_state.pagina == 2:
                 st.dataframe(df_ops_live, use_container_width=True)
                 st.info("ℹ️ Base de OPs carregada automaticamente da planilha corporativa.")
             else:
-                st.warning("⚠️ Não foi possível carregar os dados da planilha no momento. Verifique a conexão.")
+                st.warning("⚠️ Não foi possível carregar os dados da planilha no momento.")
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -264,25 +264,37 @@ elif st.session_state.pagina == 2:
         detalhes_produtos = {}
 
         if df_ops_live is not None and not df_ops_live.empty:
-            # Tenta localizar colunas correspondentes na planilha
-            cols = [c for c in df_ops_live.columns]
-            col_maq = next((c for c in cols if 'MAQ' in c), cols[0])
-            col_prod = next((c for c in cols if 'PROD' in c), cols[1] if len(cols) > 1 else cols[0])
-            col_lote = next((c for c in cols if 'LOTE' in c), cols[2] if len(cols) > 2 else cols[0])
-
+            cols = list(df_ops_live.columns)
+            
+            # Varre o DataFrame buscando blocos de máquinas e produtos em qualquer coluna
             for _, row in df_ops_live.iterrows():
-                m_val = str(row.get(col_maq, "")).upper()
-                p_val = str(row.get(col_prod, "")).strip()
-                l_val = str(row.get(col_lote, "")).strip()
+                row_str = " ".join([str(val) for val in row.values if pd.notna(val)]).upper()
                 
-                if maq_sel.upper() in m_val and p_val and p_val != "nan":
-                    if p_val not in produtos_encontrados:
-                        produtos_encontrados.append(p_val)
-                        detalhes_produtos[p_val] = {
-                            "lote": l_val if l_val != "nan" else "",
-                            "marca": "3CORAÇÕES",
-                            "gramatura": ""
-                        }
+                # Se a linha menciona a máquina selecionada (ex: EVOLUTION 01 ou EVOLUTION-01)
+                maq_busca = maq_sel.replace(" ", "").replace("-", "")
+                row_busca = row_str.replace(" ", "").replace("-", "")
+                
+                if maq_busca in row_busca:
+                    # Tenta extrair valores úteis da linha (Produto e Lote)
+                    valores_validos = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() and str(val).strip().lower() != 'none']
+                    
+                    for val in valores_validos:
+                        # Identifica se parece um produto (contém letras e tamanho relevante)
+                        if len(val) > 4 and not val.isdigit() and val.upper() != maq_sel.upper():
+                            if val not in produtos_encontrados:
+                                produtos_encontrados.append(val)
+                                # Procura um lote numérico na mesma linha ou usa padrão
+                                lote_encontrado = ""
+                                for v2 in valores_validos:
+                                    if v2.isdigit() and len(v2) in [6, 7]:
+                                        lote_encontrado = v2
+                                        break
+                                
+                                detalhes_produtos[val] = {
+                                    "lote": lote_encontrado,
+                                    "marca": "3CORAÇÕES",
+                                    "gramatura": ""
+                                }
 
         if not produtos_encontrados:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
