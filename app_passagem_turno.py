@@ -264,30 +264,47 @@ elif st.session_state.pagina == 2:
         if df_ops_live is not None and not df_ops_live.empty:
             cols = list(df_ops_live.columns)
             
-            # Varre cada coluna procurando o nome da máquina selecionada
+            # Varre cada coluna procurando o bloco exato da máquina selecionada
             for idx, col in enumerate(cols):
                 for _, row in df_ops_live.iterrows():
                     val_celula = str(row.get(col, "")).upper().strip()
-                    # Compara se a célula contém a máquina (ex: EVOLUTION-01, EVOLUTION 01, M028, etc.)
                     if maq_sel.upper().replace(" ", "") in val_celula.replace(" ", ""):
-                        # Varre as colunas seguintes à direita para encontrar Produto e Lote Pa
+                        # Ordem exata dos blocos na planilha: [Máquina] [SKU] [Produto] [Lote PA]
                         p_val = ""
                         l_val = ""
-                        for offset in range(1, 5):
+                        
+                        # Procura nas colunas à direita pelo produto e lote PA (ignorando o SKU que vem primeiro)
+                        encontrou_sku = False
+                        for offset in range(1, 6):
                             if idx + offset < len(cols):
                                 cell_val = str(row.get(cols[idx + offset], "")).strip()
                                 if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
-                                    if not p_val and len(cell_val) > 3 and not cell_val.isdigit():
+                                    # Se for um número curto de 5-7 dígitos e ainda não pegamos SKU, é o SKU
+                                    if not encontrou_sku and cell_val.isdigit() and len(cell_val) <= 8:
+                                        encontrou_sku = True
+                                        continue
+                                    # Se já passou do SKU (ou encontrou texto longo), é o Produto
+                                    elif not p_val and len(cell_val) > 3 and not cell_val.isdigit():
                                         p_val = cell_val
-                                    elif not l_val and (cell_val.isdigit() or len(cell_val) >= 6):
+                                    # O valor seguinte que for numérico com 7+ dígitos é o Lote PA
+                                    elif p_val and not l_val and (cell_val.isdigit() or len(cell_val) >= 6):
                                         l_val = cell_val
+                                        break
                         
                         if p_val and p_val not in produtos_encontrados:
                             produtos_encontrados.append(p_val)
+                            
+                            # Extração automática de gramatura do nome do produto (ex: 200G, 1KG, 15G, 100G)
+                            gramatura_extraida = ""
+                            import re
+                            match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
+                            if match_g:
+                                gramatura_extraida = match_g.group(1).upper().replace(" ", "")
+
                             detalhes_produtos[p_val] = {
                                 "lote": l_val,
                                 "marca": "3CORAÇÕES",
-                                "gramatura": ""
+                                "gramatura": gramatura_extraida
                             }
 
         if not produtos_encontrados:
@@ -418,7 +435,7 @@ elif st.session_state.pagina == 2:
         with st.form("form_mistura_premix"):
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
-                prod_m = st.text_input("Descrição do Produto:", placeholder="Ex: Café com leite tradicional")
+                prod_m = st.text_input("Descrição du Produto:", placeholder="Ex: Café com leite tradicional")
             with col_m2:
                 qtd_batidas = st.number_input(f"Qtd de {tipo_label}s / Batidas:", min_value=1, value=1, step=1)
             with col_m3:
