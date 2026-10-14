@@ -21,6 +21,19 @@ def calcular_turno(dt=None):
     else:                              # 22:20 - 05:40
         return "Turno C"
 
+# Link dinâmico da Planilha OP Teste (Exportação CSV com o GID correto)
+GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
+
+@st.cache_data(ttl=60)
+def carregar_base_ops(url):
+    """Carrega os dados diretamente da planilha corporativa em tempo real"""
+    try:
+        df = pd.read_csv(url, dtype=str)
+        df.columns = [c.strip().upper() for c in df.columns]
+        return df
+    except Exception:
+        return None
+
 # Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
@@ -102,22 +115,6 @@ CODIGOS_OCORRENCIAS = {
     "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA", "604": "604 | DESVIOS DE QUALIDADE", 
     "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
 }
-
-# Base de Dados Oficial de OPs
-DADOS_BASE_OFICIAL = [
-    {"maquina": "LEEPACK", "produto": "CAFE C/LEIT 3C REF 24X100G", "lote": "1098836", "marca": "3CORAÇÕES", "gramatura": "100g"},
-    {"maquina": "BOSCH 16", "produto": "CAFE CAPP SC FOOD 5X1KG", "lote": "1098834", "marca": "3CORAÇÕES", "gramatura": "1kg"},
-    {"maquina": "BOSCH 16", "produto": "CAFE CAPP 3C BX ACUC 5S 5X1KG", "lote": "1098835", "marca": "3CORAÇÕES", "gramatura": "1kg"},
-    {"maquina": "LINEA 01", "produto": "CAFE CAPP IGUA CHOC PT 24X200G", "lote": "1098909", "marca": "3CORAÇÕES", "gramatura": "200g"},
-    {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CAPP 6X220G", "lote": "1098911", "marca": "3CORAÇÕES", "gramatura": "220g"},
-    {"maquina": "LINEA 02", "produto": "SUPLEMENTO ALIM ATDC UCOF CBAUN 6X220G", "lote": "1098912", "marca": "3CORAÇÕES", "gramatura": "220g"},
-    {"maquina": "EVOLUTION 01", "produto": "SUPLEMENTO ALIM PPOWER BET ACAI 6X14X9G", "lote": "1098748", "marca": "3CORAÇÕES", "gramatura": "9g"},
-    {"maquina": "EVOLUTION 02", "produto": "CHOCOLATE QUEN PO 3C STICK 30X20G", "lote": "1098833", "marca": "3CORAÇÕES", "gramatura": "20g"},
-    {"maquina": "VOLPACK", "produto": "CAFE CAPP CRUZ CARAM SAL CHL SCH 8X8X15G", "lote": "1098831", "marca": "3CORAÇÕES", "gramatura": "15g"},
-    {"maquina": "VOLPACK", "produto": "CAFE CLEIT 3C ZR SCH 30X20G", "lote": "1098939", "marca": "3CORAÇÕES", "gramatura": "20g"},
-    {"maquina": "VOLPACK", "produto": "CAFE CAPP IGUA CLAS SCH 8X10X10G", "lote": "1098960", "marca": "3CORAÇÕES", "gramatura": "10g"},
-    {"maquina": "M028", "produto": "CAFE CAPP SC CLAS PT 24X200G", "lote": "1098832", "marca": "3CORAÇÕES", "gramatura": "200g"}
-]
 
 st.set_page_config(
     page_title="Check-lists Produção",
@@ -240,10 +237,15 @@ elif st.session_state.pagina == 2:
     if st.session_state.area_atuacao == "Envase":
         st.subheader("📝 Controle de empacotamentos")
 
+        # Carregamento dinâmico da planilha corporativa via CSV
+        df_ops_live = carregar_base_ops(GSHEET_OP_URL)
+
         with st.expander("📋 Tabela de Referência de OPs Oficial"):
-            df_view = pd.DataFrame(DADOS_BASE_OFICIAL)
-            st.dataframe(df_view, use_container_width=True)
-            st.info("ℹ️ Base de OPs sincronizada com todas as máquinas da produção.")
+            if df_ops_live is not None and not df_ops_live.empty:
+                st.dataframe(df_ops_live, use_container_width=True)
+                st.info("ℹ️ Base de OPs carregada automaticamente da planilha corporativa.")
+            else:
+                st.warning("⚠️ Não foi possível carregar os dados da planilha no momento. Verifique a conexão.")
 
         c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
         with c_m1:
@@ -261,15 +263,26 @@ elif st.session_state.pagina == 2:
         produtos_encontrados = []
         detalhes_produtos = {}
 
-        for item in DADOS_BASE_OFICIAL:
-            if item["maquina"].upper() == maq_sel.upper():
-                p_nome = item["produto"]
-                produtos_encontrados.append(p_nome)
-                detalhes_produtos[p_nome] = {
-                    "lote": item["lote"],
-                    "marca": item["marca"],
-                    "gramatura": item["gramatura"]
-                }
+        if df_ops_live is not None and not df_ops_live.empty:
+            # Tenta localizar colunas correspondentes na planilha
+            cols = [c for c in df_ops_live.columns]
+            col_maq = next((c for c in cols if 'MAQ' in c), cols[0])
+            col_prod = next((c for c in cols if 'PROD' in c), cols[1] if len(cols) > 1 else cols[0])
+            col_lote = next((c for c in cols if 'LOTE' in c), cols[2] if len(cols) > 2 else cols[0])
+
+            for _, row in df_ops_live.iterrows():
+                m_val = str(row.get(col_maq, "")).upper()
+                p_val = str(row.get(col_prod, "")).strip()
+                l_val = str(row.get(col_lote, "")).strip()
+                
+                if maq_sel.upper() in m_val and p_val and p_val != "nan":
+                    if p_val not in produtos_encontrados:
+                        produtos_encontrados.append(p_val)
+                        detalhes_produtos[p_val] = {
+                            "lote": l_val if l_val != "nan" else "",
+                            "marca": "3CORAÇÕES",
+                            "gramatura": ""
+                        }
 
         if not produtos_encontrados:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
