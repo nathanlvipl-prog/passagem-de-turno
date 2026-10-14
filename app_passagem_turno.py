@@ -29,7 +29,6 @@ def carregar_base_ops(url):
     """Carrega os dados diretamente da planilha corporativa em tempo real"""
     try:
         df = pd.read_csv(url, dtype=str)
-        # Remove espaços em branco dos nomes das colunas
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception:
@@ -85,7 +84,6 @@ EQUIPE_FIXA_MAQUINAS = {
     }
 }
 
-# Lista Global de Auxiliares conhecidos
 TODOS_AUXILIARES_GERAL = sorted(list(set([
     "LUAN", "EVERSON", "BRENDON", "ANDRIALISSON", "MAYK", 
     "DENILSON", "ANDREY", "NERISMAR", "SAMUEL", "JEFFERSON", 
@@ -95,7 +93,7 @@ TODOS_AUXILIARES_GERAL = sorted(list(set([
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
-    "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
+    "Revolução": ["REVOLUÇÃO 01", "REvolução 02"]
 }
 
 CODIGOS_OCORRENCIAS = {
@@ -266,32 +264,31 @@ elif st.session_state.pagina == 2:
         if df_ops_live is not None and not df_ops_live.empty:
             cols = list(df_ops_live.columns)
             
-            # Varre o DataFrame buscando blocos de máquinas e produtos em qualquer coluna
-            for _, row in df_ops_live.iterrows():
-                row_str = " ".join([str(val) for val in row.values if pd.notna(val)]).upper()
-                
-                # Se a linha menciona a máquina selecionada (ex: EVOLUTION 01 ou EVOLUTION-01)
-                maq_busca = maq_sel.replace(" ", "").replace("-", "")
-                row_busca = row_str.replace(" ", "").replace("-", "")
-                
-                if maq_busca in row_busca:
-                    # Tenta extrair valores úteis da linha (Produto e Lote)
-                    valores_validos = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() and str(val).strip().lower() != 'none']
-                    
-                    for val in valores_validos:
-                        # Identifica se parece um produto (contém letras e tamanho relevante)
-                        if len(val) > 4 and not val.isdigit() and val.upper() != maq_sel.upper():
-                            if val not in produtos_encontrados:
-                                produtos_encontrados.append(val)
-                                # Procura um lote numérico na mesma linha ou usa padrão
-                                lote_encontrado = ""
-                                for v2 in valores_validos:
-                                    if v2.isdigit() and len(v2) in [6, 7]:
-                                        lote_encontrado = v2
-                                        break
-                                
-                                detalhes_produtos[val] = {
-                                    "lote": lote_encontrado,
+            # Varre as colunas em pares/blocos para identificar exatamente onde a máquina aparece
+            for idx, col in enumerate(cols):
+                col_upper = str(col).upper()
+                if "MÁQUINA" in col_upper or "MAQ" in col_upper or "M028" in col_upper or "VOLPACK" in col_upper or "EVOLUTION" in col_upper or "LINEA" in col_upper:
+                    for _, row in df_ops_live.iterrows():
+                        val_celula = str(row.get(col, "")).upper()
+                        # Se encontrou a máquina exata neste bloco
+                        if maq_sel.upper() in val_celula:
+                            # Procura nas colunas à direita (produto e lote)
+                            prod_val = ""
+                            lote_val = ""
+                            for offset in range(1, 4):
+                                if idx + offset < len(cols):
+                                    c_prox = cols[idx + offset]
+                                    v_prox = str(row.get(c_prox, "")).strip()
+                                    if v_prox and v_prox.lower() != "nan" and v_prox.upper() != "NONE":
+                                        if not prod_val and len(v_prox) > 3 and not v_prox.isdigit():
+                                            prod_val = v_prox
+                                        elif not lote_val and (v_prox.isdigit() or len(v_prox) >= 6):
+                                            lote_val = v_prox
+                            
+                            if prod_val and prod_val not in produtos_encontrados:
+                                produtos_encontrados.append(prod_val)
+                                detalhes_produtos[prod_val] = {
+                                    "lote": lote_val,
                                     "marca": "3CORAÇÕES",
                                     "gramatura": ""
                                 }
