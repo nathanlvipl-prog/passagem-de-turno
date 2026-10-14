@@ -93,7 +93,7 @@ TODOS_AUXILIARES_GERAL = sorted(list(set([
 MAQUINAS_POR_SETOR = {
     "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
     "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
-    "Revolução": ["REVOLUÇÃO 01", "REvolução 02"]
+    "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
 }
 
 CODIGOS_OCORRENCIAS = {
@@ -264,34 +264,31 @@ elif st.session_state.pagina == 2:
         if df_ops_live is not None and not df_ops_live.empty:
             cols = list(df_ops_live.columns)
             
-            # Varre as colunas em pares/blocos para identificar exatamente onde a máquina aparece
+            # Varre cada coluna procurando o nome da máquina selecionada
             for idx, col in enumerate(cols):
-                col_upper = str(col).upper()
-                if "MÁQUINA" in col_upper or "MAQ" in col_upper or "M028" in col_upper or "VOLPACK" in col_upper or "EVOLUTION" in col_upper or "LINEA" in col_upper:
-                    for _, row in df_ops_live.iterrows():
-                        val_celula = str(row.get(col, "")).upper()
-                        # Se encontrou a máquina exata neste bloco
-                        if maq_sel.upper() in val_celula:
-                            # Procura nas colunas à direita (produto e lote)
-                            prod_val = ""
-                            lote_val = ""
-                            for offset in range(1, 4):
-                                if idx + offset < len(cols):
-                                    c_prox = cols[idx + offset]
-                                    v_prox = str(row.get(c_prox, "")).strip()
-                                    if v_prox and v_prox.lower() != "nan" and v_prox.upper() != "NONE":
-                                        if not prod_val and len(v_prox) > 3 and not v_prox.isdigit():
-                                            prod_val = v_prox
-                                        elif not lote_val and (v_prox.isdigit() or len(v_prox) >= 6):
-                                            lote_val = v_prox
-                            
-                            if prod_val and prod_val not in produtos_encontrados:
-                                produtos_encontrados.append(prod_val)
-                                detalhes_produtos[prod_val] = {
-                                    "lote": lote_val,
-                                    "marca": "3CORAÇÕES",
-                                    "gramatura": ""
-                                }
+                for _, row in df_ops_live.iterrows():
+                    val_celula = str(row.get(col, "")).upper().strip()
+                    # Compara se a célula contém a máquina (ex: EVOLUTION-01, EVOLUTION 01, M028, etc.)
+                    if maq_sel.upper().replace(" ", "") in val_celula.replace(" ", ""):
+                        # Varre as colunas seguintes à direita para encontrar Produto e Lote Pa
+                        p_val = ""
+                        l_val = ""
+                        for offset in range(1, 5):
+                            if idx + offset < len(cols):
+                                cell_val = str(row.get(cols[idx + offset], "")).strip()
+                                if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
+                                    if not p_val and len(cell_val) > 3 and not cell_val.isdigit():
+                                        p_val = cell_val
+                                    elif not l_val and (cell_val.isdigit() or len(cell_val) >= 6):
+                                        l_val = cell_val
+                        
+                        if p_val and p_val not in produtos_encontrados:
+                            produtos_encontrados.append(p_val)
+                            detalhes_produtos[p_val] = {
+                                "lote": l_val,
+                                "marca": "3CORAÇÕES",
+                                "gramatura": ""
+                            }
 
         if not produtos_encontrados:
             produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
