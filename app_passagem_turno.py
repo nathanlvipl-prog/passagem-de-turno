@@ -153,21 +153,29 @@ def validar_dun14(dun_lido, tem_etiqueta=True, dados_dun=None):
 
 
 def buscar_descricao_por_sku(sku_lido, dados_op):
-  """Busca a descrição oficial na planilha de OPs com base no SKU lido."""
+  """Busca rigorosamente a descrição oficial na planilha de OPs com base no SKU lido."""
   if dados_op is None or dados_op.empty or not sku_lido:
     return ""
 
-  sku_limpo = str(sku_lido).strip().upper()
-  # Varre as colunas procurando correspondência com o SKU
-  for col in dados_op.columns:
-    for idx, val in dados_op[col].dropna().items():
-      if sku_limpo in str(val).upper():
-        # Tenta localizar uma coluna vizinha que pareça conter a descrição do produto
+  sku_limpo = extrair_apenas_digitos(sku_lido)
+  if not sku_limpo:
+    return ""
+
+  for idx, row in dados_op.iterrows():
+    for col in dados_op.columns:
+      val_cel = extrair_apenas_digitos(str(row[col]))
+      if sku_limpo in val_cel and len(sku_limpo) >= 4:
+        # Encontrou a linha do SKU. Procura na mesma linha a coluna com texto descritivo oficial.
         for c_desc in dados_op.columns:
-          texto_cel = str(dados_op.loc[idx, c_desc]).strip()
-          if len(texto_cel) > 5 and texto_cel.upper() != sku_limpo:
-            return texto_cel
-  return ""
+          texto_desc = str(row[c_desc]).strip()
+          if (
+              len(texto_desc) > 3
+              and not texto_desc.isdigit()
+              and texto_desc.upper() != sku_limpo
+          ):
+            return texto_desc
+
+  return f"Produto SKU {sku_lido}"
 
 
 def formatar_validade(val_str):
@@ -544,23 +552,15 @@ elif st.session_state.pagina == 2:
 
           prompt_ocr = """
                     Você é um motor de OCR industrial sênior especializado em visão computacional para embalagens de alimentos e jato de tinta (inkjet).
-                    Examine a IMAGEM ATUAL fornecida com extremo rigor e atenção aos detalhes numéricos impressos nas embalagens.
+                    Examine a IMAGEM ATUAL fornecida com extremo rigor e atenção aos códigos numéricos impressos nas embalagens.
 
-                    ATENÇÃO CRUCIAL PARA DISTINÇÃO DE DÍGITOS (Evite erros de confusão entre 7 e 9):
-                    - Códigos impressos a jato de tinta em caixas de papelão marrom frequentemente possuem pontos borrados. Analise cuidadosamente a curvatura completa dos dígitos numéricos (como '9' que possui um loop fechado superior e '7' que é uma linha reta angulada) para NUNCA confundir 7 com 9 ou vice-versa. Faça dupla checagem visual de cada dígito do lote!
-
-                    REGRAS DE EXTRAÇÃO:
-                    - SKU: Identifique o código numérico do SKU impresso no produto ou caixa correspondente à linha ativa.
-                    - TEM_ETIQUETA: Indique 'SIM' EXCLUSIVAMENTE se houver uma etiqueta adesiva térmica colada (tipo Argox). Indique 'NAO' se for uma caixa de papelão (secundária/terciária) com impressão direta direto na caixa marrom/parda.
-                    - DUN: Se for caixa de papelão com impressão direta (TEM_ETIQUETA: NAO), informe obrigatoriamente 'NAO_APLICAVEL'. Se for etiqueta adesiva Argox (TEM_ETIQUETA: SIM), extraia o código DUN-14 impresso na etiqueta.
-                    - VALIDADE_ETIQUETA: Data de validade impressa na etiqueta (se houver) ou deixe vazio.
-                    - VALIDADE_REFIL: Data de validade impressa na lata / refil ou na própria caixa de papelão.
-                    - LOTE_CAIXA: Extração exata dos dígitos do lote da caixa de papelão.
-                    - LOTE_REFIL: Extração exata dos dígitos do lote do refil/lata apoiado em cima.
+                    ATENÇÃO CRUCIAL:
+                    - Foque estritamente na leitura correta do SKU (código numérico do produto associado à linha/marcador) e dos lotes/validades.
+                    - Não invente nomes de produtos. Apenas extraia o número do SKU correto impresso na caixa ou etiqueta.
 
                     Retorne ESTRITAMENTE o modelo abaixo preenchido:
 
-                    SKU: [Código SKU]
+                    SKU: [Código SKU numérico]
                     TEM_ETIQUETA: [SIM ou NAO]
                     DUN: [Código DUN-14 da etiqueta ou NAO_APLICAVEL]
                     VALIDADE_ETIQUETA: [Validade impressa na etiqueta]
@@ -607,14 +607,8 @@ elif st.session_state.pagina == 2:
             lote_cx_raw = get_field("LOTE_CAIXA", "")
             lote_refil_raw = get_field("LOTE_REFIL", "")
 
-            # BUSCA DA DESCRIÇÃO OFICIAL DIRETAMENTE NA PLANILHA DE OPs
+            # BUSCA DA DESCRIÇÃO OFICIAL DIRETAMENTE NA PLANILHA DE OPs (Evita erros de nomes na caixa)
             descricao_lida = buscar_descricao_por_sku(sku_lido, dados_op)
-            if not descricao_lida:
-              descricao_lida = (
-                  f"Produto SKU {sku_lido}"
-                  if sku_lido
-                  else "Produto Industrial"
-              )
 
             motivos_reprovacao = []
 
