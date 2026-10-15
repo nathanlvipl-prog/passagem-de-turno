@@ -153,29 +153,43 @@ def validar_dun14(dun_lido, tem_etiqueta=True, dados_dun=None):
 
 
 def buscar_descricao_por_sku(sku_lido, dados_op):
-  """Busca rigorosamente a descrição oficial na planilha de OPs com base no SKU lido."""
+  """Busca EXCLUSIVAMENTE na planilha de OPs a descrição vinculada ao SKU lido."""
   if dados_op is None or dados_op.empty or not sku_lido:
-    return ""
+    return f"Produto SKU {sku_lido}"
 
   sku_limpo = extrair_apenas_digitos(sku_lido)
-  if not sku_limpo:
-    return ""
+  if not sku_limpo or len(sku_limpo) < 4:
+    return f"Produto SKU {sku_lido}"
 
+  # Varre a planilha de OPs procurando a linha que contém o SKU exato
   for idx, row in dados_op.iterrows():
     for col in dados_op.columns:
       val_cel = extrair_apenas_digitos(str(row[col]))
-      if sku_limpo in val_cel and len(sku_limpo) >= 4:
-        # Encontrou a linha do SKU. Procura na mesma linha a coluna com texto descritivo oficial.
+      if sku_limpo in val_cel:
+        # Encontrou o SKU. Varre as outras colunas da mesma linha para achar o nome oficial do produto
         for c_desc in dados_op.columns:
           texto_desc = str(row[c_desc]).strip()
           if (
-              len(texto_desc) > 3
+              len(texto_desc) > 6
+              and not texto_desc.isdigit()
+              and texto_desc.upper() != sku_limpo
+              and "CAPP" in texto_desc.upper()
+              or "CAFE" in texto_desc.upper()
+              or "SUPLEMENTO" in texto_desc.upper()
+          ):
+            return texto_desc
+
+        # Segundo varredura caso não pegue pelo filtro de palavras-chave
+        for c_desc in dados_op.columns:
+          texto_desc = str(row[c_desc]).strip()
+          if (
+              len(texto_desc) > 6
               and not texto_desc.isdigit()
               and texto_desc.upper() != sku_limpo
           ):
             return texto_desc
 
-  return f"Produto SKU {sku_lido}"
+  return f"Produto SKU {sku_lido} (Não localizado na tabela de OPs)"
 
 
 def formatar_validade(val_str):
@@ -551,16 +565,12 @@ elif st.session_state.pagina == 2:
             image_otimizada.thumbnail((2048, 2048))
 
           prompt_ocr = """
-                    Você é um motor de OCR industrial sênior especializado em visão computacional para embalagens de alimentos e jato de tinta (inkjet).
-                    Examine a IMAGEM ATUAL fornecida com extremo rigor e atenção aos códigos numéricos impressos nas embalagens.
-
-                    ATENÇÃO CRUCIAL:
-                    - Foque estritamente na leitura correta do SKU (código numérico do produto associado à linha/marcador) e dos lotes/validades.
-                    - Não invente nomes de produtos. Apenas extraia o número do SKU correto impresso na caixa ou etiqueta.
+                    Você é um motor de OCR industrial sênior. Sua ÚNICA tarefa nesta imagem é extrair com precisão absoluta os números correspondentes ao SKU, lote e validades.
+                    NÃO extraia nomes de produtos da caixa, pois as caixas são multiuso.
 
                     Retorne ESTRITAMENTE o modelo abaixo preenchido:
 
-                    SKU: [Código SKU numérico]
+                    SKU: [Código SKU numérico impresso próximo ao código de barras do produto ativo]
                     TEM_ETIQUETA: [SIM ou NAO]
                     DUN: [Código DUN-14 da etiqueta ou NAO_APLICAVEL]
                     VALIDADE_ETIQUETA: [Validade impressa na etiqueta]
@@ -607,7 +617,7 @@ elif st.session_state.pagina == 2:
             lote_cx_raw = get_field("LOTE_CAIXA", "")
             lote_refil_raw = get_field("LOTE_REFIL", "")
 
-            # BUSCA DA DESCRIÇÃO OFICIAL DIRETAMENTE NA PLANILHA DE OPs (Evita erros de nomes na caixa)
+            # BUSCA DA DESCRIÇÃO OFICIAL 100% NA PLANILHA DE OPs COM BASE NO SKU
             descricao_lida = buscar_descricao_por_sku(sku_lido, dados_op)
 
             motivos_reprovacao = []
