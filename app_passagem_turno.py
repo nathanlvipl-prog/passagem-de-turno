@@ -1,819 +1,556 @@
-import base64
-from datetime import datetime, timedelta, timezone
-import io
-import re
-from google import genai
-import pandas as pd
-from PIL import Image
-import requests
 import streamlit as st
+from datetime import datetime, timezone, timedelta
+import pandas as pd
+import re
 
-# ==============================================================================
-# CONFIGURAÇÃO DE FUSO HORÁRIO BRASIL (UTC-3) E CÁLCULO DE TURNO
-# ==============================================================================
+# ---------------------------------------------------------
+# CONFIGURAÇÕES DE FUSO HORÁRIO BRASIL (UTC-3) E TURNO
+# ---------------------------------------------------------
 FUSO_BR = timezone(timedelta(hours=-3))
 
-
 def obter_datetime_br():
-  """Retorna o objeto datetime atual no fuso horário do Brasil (UTC-3)"""
-  return datetime.now(FUSO_BR)
-
-
-def obter_hora_atual():
-  """Retorna data e hora formatadas no fuso horário do Brasil (UTC-3)"""
-  return obter_datetime_br().strftime("%d/%m/%Y %H:%M:%S")
-
+    return datetime.now(FUSO_BR)
 
 def calcular_turno(dt=None):
-  """Calcula o turno com base nos intervalos de horário definidos"""
-  if dt is None:
-    dt = obter_datetime_br()
+    if dt is None:
+        dt = obter_datetime_br()
+    minutos_totais = dt.hour * 60 + dt.minute
+    if 340 <= minutos_totais < 840:    # 05:40 - 14:00
+        return "Turno A"
+    elif 840 <= minutos_totais < 1340:  # 14:00 - 22:20
+        return "Turno B"
+    else:                              # 22:20 - 05:40
+        return "Turno C"
 
-  minutos_totais = dt.hour * 60 + dt.minute
+# Links dinâmicos das Planilhas Corporativas (Exportação CSV)
+GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
+GSHEET_METAS_URL = "https://docs.google.com/spreadsheets/d/1DMMZL2lYjUF3HXh5q9vBnqz6AbiJgyknfKMwkYy8mZY/export?format=csv&gid=0"
 
-  if 340 <= minutos_totais < 840:
-    return "Turno A"
-  elif 840 <= minutos_totais < 1340:
-    return "Turno B"
-  else:
-    return "Turno C"
+@st.cache_data(ttl=15)
+def carregar_dados_externos(url):
+    """Carrega dados padrão de planilhas do Google Sheets"""
+    try:
+        df = pd.read_csv(url, dtype=str)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+    except Exception:
+        return None
 
+@st.cache_data(ttl=15)
+def carregar_metas_direto(url, nome_maquina):
+    """Lê a planilha de metas focando na estrutura exata de colunas (Linha/Máquina e Meta)"""
+    try:
+        df_raw = pd.read_csv(url, header=None, dtype=str)
+        maq_busca = re.sub(r'[^A-Z0-9]', '', nome_maquina.upper())
+        
+        for index, row in df_raw.iterrows():
+            linha_texto = " ".join([str(v) for v in row.values if pd.notna(v)])
+            linha_limpa = re.sub(r'[^A-Z0-9]', '', linha_texto.upper())
+            
+            # Procura se o nome da máquina está nesta linha
+            if maq_busca in linha_limpa or (maq_busca == "LEEPACK" and "LEEPACK" in linha_limpa):
+                # Varre as colunas da mesma linha para encontrar o valor numérico da meta
+                for val in row.values:
+                    if pd.notna(val):
+                        val_str = str(val).strip()
+                        # Remove pontos de milhar e verifica se é número válido (ex: 10.000 ou 25000)
+                        val_num_limpo = re.sub(r'[^0-9]', '', val_str)
+                        if val_num_limpo and val_num_limpo.isdigit() and len(val_num_limpo) >= 3:
+                            return int(val_num_limpo)
+        return 0
+    except Exception:
+        return 0
 
-def extrair_apenas_digitos(texto):
-  """Remove tudo que não for dígito numérico"""
-  if not texto:
-    return ""
-  return re.sub(r"\D", "", str(texto))
-
-
-def extrair_lote_numerico(texto):
-  """Extrai estritamente a numeração do lote (6 a 8 dígitos), descartando horários e códigos."""
-  if not texto:
-    return ""
-
-  texto_str = str(texto)
-
-  match_l = re.search(r"L(?:OTE)?\s*(\d{6,8})", texto_str, re.IGNORECASE)
-  if match_l:
-    return match_l.group(1)
-
-  match_seq = re.search(r"\b\d{6,8}\b", texto_str)
-  if match_seq:
-    return match_seq.group(0)
-
-  digitos = re.sub(r"\D", "", texto_str)
-  if len(digitos) > 8:
-    return digitos[:7]
-  return digitos
-
-
-def padronizar_data_validade(val_str):
-  """Extrai dia, mês e ano em formato estrito DD.MM.YYYY para comparação estrita."""
-  digitos = extrair_apenas_digitos(val_str)
-  if len(digitos) == 8:
-    return f"{digitos[:2]}.{digitos[2:4]}.{digitos[4:]}"
-  elif len(digitos) == 6:
-    return f"{digitos[:2]}.{digitos[2:4]}.20{digitos[4:]}"
-  return ""
-
-
-def validar_validade(val_cx_raw, val_refil_raw):
-  """Valida se as datas de validade das embalagens primária e secundária são estritamente iguais."""
-  val_cx_std = padronizar_data_validade(val_cx_raw)
-  val_refil_std = padronizar_data_validade(val_refil_raw)
-
-  if val_cx_std and val_refil_std:
-    if val_cx_std != val_refil_std:
-      return (
-          False,
-          (
-              f"Divergência de Validade entre embalagens: Etiqueta/Caixa"
-              f" ({val_cx_raw}) x Lata/Refil ({val_refil_raw})."
-          ),
-          f"Não Conforme (Etiqueta {val_cx_std} x Refil {val_refil_std})",
-      )
-
-  return True, "", "Conforme (Datas equivalentes)"
-
-
-def validar_dun14(dun_lido, tem_etiqueta=True, dados_dun=None):
-  """Valida o código DUN-14 EXCLUSIVAMENTE se houver etiqueta adesiva Argox."""
-  if not tem_etiqueta or "NAO" in str(tem_etiqueta).upper():
-    return (
-        True,
-        "",
-        "Não Aplicável (Caixa de Papelão / Impressão Direta - Sem Validação"
-        " DUN)",
-    )
-
-  digitos = extrair_apenas_digitos(dun_lido)
-  if not digitos or "NAO" in str(dun_lido).upper():
-    return (
-        True,
-        "",
-        "Não Aplicável (Produto sem Etiqueta de Código de Barras)",
-    )
-
-  if len(digitos) != 14:
-    return (
-        False,
-        (
-            f"Código DUN-14 na etiqueta Argox ({digitos}) possui"
-            f" {len(digitos)} dígitos (esperado 14 dígitos). Impressão"
-            " incompleta."
-        ),
-        f"Não Conforme ({len(digitos)} dígitos - Esperado 14)",
-    )
-
-  if dados_dun is not None and not dados_dun.empty:
-    dun_encontrado = False
-    for col in dados_dun.columns:
-      col_valores = (
-          dados_dun[col]
-          .dropna()
-          .astype(str)
-          .apply(extrair_apenas_digitos)
-          .values
-      )
-      if digitos in col_valores:
-        dun_encontrado = True
-        break
-
-    if not dun_encontrado:
-      return (
-          False,
-          (
-              f"Código DUN-14 ({digitos}) não foi encontrado na tabela de"
-              " cadastro SKU x DUN."
-          ),
-          "Não Conforme (Fora do Cadastro)",
-      )
-
-  return True, "", "Conforme (14 dígitos validados na tabela)"
-
-
-def buscar_descricao_por_sku(sku_lido, dados_op):
-  """Busca EXCLUSIVAMENTE na planilha de OPs a descrição vinculada ao SKU lido."""
-  if dados_op is None or dados_op.empty or not sku_lido:
-    return f"Produto SKU {sku_lido}"
-
-  sku_limpo = extrair_apenas_digitos(sku_lido)
-  if not sku_limpo or len(sku_limpo) < 4:
-    return f"Produto SKU {sku_lido}"
-
-  # Varre a planilha de OPs procurando a linha que contém o SKU exato
-  for idx, row in dados_op.iterrows():
-    for col in dados_op.columns:
-      val_cel = extrair_apenas_digitos(str(row[col]))
-      if sku_limpo in val_cel:
-        # Encontrou o SKU. Varre as outras colunas da mesma linha para achar o nome oficial do produto
-        for c_desc in dados_op.columns:
-          texto_desc = str(row[c_desc]).strip()
-          if (
-              len(texto_desc) > 6
-              and not texto_desc.isdigit()
-              and texto_desc.upper() != sku_limpo
-              and "CAPP" in texto_desc.upper()
-              or "CAFE" in texto_desc.upper()
-              or "SUPLEMENTO" in texto_desc.upper()
-          ):
-            return texto_desc
-
-        # Segundo varredura caso não pegue pelo filtro de palavras-chave
-        for c_desc in dados_op.columns:
-          texto_desc = str(row[c_desc]).strip()
-          if (
-              len(texto_desc) > 6
-              and not texto_desc.isdigit()
-              and texto_desc.upper() != sku_limpo
-          ):
-            return texto_desc
-
-  return f"Produto SKU {sku_lido} (Não localizado na tabela de OPs)"
-
-
-def formatar_validade(val_str):
-  """Garante a formatação visual com pontos (ex: 08.04.2027)"""
-  val_std = padronizar_data_validade(val_str)
-  if val_std:
-    return val_std
-  val_clean = str(val_str).strip().replace("/", ".").replace("-", ".")
-  return val_clean if val_clean else "00.00.0000"
-
-
-def formatar_lote(lote_raw):
-  """Garante o formato com espaço entre 'L' e a numeração (ex: L 1082368)"""
-  digitos = extrair_lote_numerico(lote_raw)
-  if digitos:
-    return f"L {digitos}"
-  return "L 0000000"
-
-
-def converter_imagem_base64(img):
-  """Otimiza e converte a imagem PIL para string Base64 compacta"""
-  img_copia = img.copy()
-  if img_copia.width > 1600 or img_copia.height > 1600:
-    img_copia.thumbnail((1600, 1600))
-  buffered = io.BytesIO()
-  img_copia.convert("RGB").save(buffered, format="JPEG", quality=85)
-  return base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-
-# ==============================================================================
-# CONFIGURAÇÃO GERAL E LINK DO WEBHOOK GOOGLE SHEETS / DRIVE
-# ==============================================================================
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxveohVoFHdb5UUcSFBq3N3Jh-V_2VEGMbwt0cCBpp92myghXb7XE90n0eQJPtLgaLybA/exec"
-
-st.set_page_config(
-    page_title="Qualit3c - Liberação do Produto Final",
-    page_icon="📦",
-    layout="wide",
-)
-
-# CADASTRO DE COLABORADORES
+# Cadastro Oficial de Colaboradores
 CADASTRO_COLABORADORES = {
     "32164": "SILVIO NATHANAEL MEDEIROS DA SILVA",
     "32177": "EMANUEL LUCAS SEVERIANO DE SOUSA",
+    "32013": "RAFAEL FERREIRA DE OLIVEIRA",
+    "32064": "WEVERTON BRUNO DE LIMA",
+    "21491": "FLÁVIO GIOVANE FERNANDES DA SILVA",
+    "32193": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
+    "22052": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
+    "32037": "ÍTALO SILVA DO NASCIMENTO",
+    "32308": "JOÃO VICTOR BARBOSA DA SILVA",
+    "32179": "JOEDSON DOS SANTOS ARAÚJO",
 }
 
-# GERENCIAMENTO DE SESSÃO / NAVEGAÇÃO
-if "pagina" not in st.session_state:
-  st.session_state.pagina = 1
+# Mapeamento Oficial com Apenas o PRIMEIRO NOME dos Auxiliares
+EQUIPE_FIXA_MAQUINAS = {
+    "M028": {
+        "operador": "FLÁVIO GIOVANE FERNANDES DA SILVA",
+        "auxiliares": ["LUAN"]
+    },
+    "VOLPACK": {
+        "operador": "SALATIEL SEBASTIÃO DE SOUZA JÚNIOR",
+        "auxiliares": ["EVERSON", "BRENDON", "ANDRIALISSON", "MAYK"]
+    },
+    "EVOLUTION 01": {
+        "operador": "JOEDSON DOS SANTOS ARAÚJO",
+        "auxiliares": ["DENILSON", "ANDREY", "NERISMAR"]
+    },
+    "EVOLUTION 02": {
+        "operador": "WEVERTON BRUNO DE LIMA",
+        "auxiliares": ["BRENDON", "SAMUEL", "ANDREY"]
+    },
+    "LINEA 01": {
+        "operador": "ÍTALO SILVA DO NASCIMENTO",
+        "auxiliares": ["JEFFERSON", "APOLONIO", "DAVI"]
+    },
+    "LINEA 02": {
+        "operador": "",
+        "auxiliares": []
+    },
+    "BOSCH 16": {
+        "operador": "PAULO VITOR MENDES TEIXEIRA DA SILVA",
+        "auxiliares": ["ALISSON"]
+    },
+    "LEEPACK": {
+        "operador": "JOÃO VICTOR BARBOSA DA SILVA",
+        "auxiliares": ["EWERTON"]
+    }
+}
 
-if "usuario_nome" not in st.session_state:
-  st.session_state.usuario_nome = ""
-if "usuario_funcao" not in st.session_state:
-  st.session_state.usuario_funcao = ""
-if "usuario_matricula" not in st.session_state:
-  st.session_state.usuario_matricula = ""
-if "hora_login" not in st.session_state:
-  st.session_state.hora_login = ""
+TODOS_AUXILIARES_GERAL = sorted(list(set([
+    "LUAN", "EVERSON", "BRENDON", "ANDRIALISSON", "MAYK", 
+    "DENILSON", "ANDREY", "NERISMAR", "SAMUEL", "JEFFERSON", 
+    "APOLONIO", "DAVI", "ALISSON", "EWERTON"
+])))
 
-if "imagem_capturada" not in st.session_state:
-  st.session_state.imagem_capturada = None
-if "resultado_analise" not in st.session_state:
-  st.session_state.resultado_analise = ""
-if "hora_analise" not in st.session_state:
-  st.session_state.hora_analise = ""
+MAQUINAS_POR_SETOR = {
+    "Polivalente": ["M028", "VOLPACK", "EVOLUTION 01", "EVOLUTION 02", "LINEA 01", "LINEA 02", "BOSCH 16", "LEEPACK"],
+    "Instantâneos": ["BOSCH 16", "BOSCH 22", "HDB", "STICK INSTANTÂNEO"],
+    "Revolução": ["REVOLUÇÃO 01", "REVOLUÇÃO 02"]
+}
 
+CODIGOS_OCORRENCIAS = {
+    "11": "11 | SEM PROGRAMAÇÃO", "12": "12 | REFEIÇÃO", "13": "13 | FORA DE TURNO", 
+    "14": "14 | DDS", "15": "15 | REUNIÃO/TREINAMENTO/EVENTOS", "17": "17 | MANUTENÇÃO PREVENTIVA", 
+    "20": "20 | INÍCIO DE PRODUÇÃO", "21": "21 | TESTES", "22": "22 | INVENTÁRIO",
+    "24": "24 | MANUTENÇÃO CORRETIVA ELÉTRICA", "25": "25 | MANUTENÇÃO CORRETIVA MECÂNICA", 
+    "40": "40 | INÍCIO DE PRODUÇÃO", "41": "41 | FIM DE PRODUÇÃO", "42": "42 | TROCA DE TURNO",
+    "95": "95 | AGUARDANDO MANUTENÇÃO", "97": "97 | SETUP", "101": "101 | FALTA DE PESSOAL", 
+    "102": "102 | LIMPEZA DE ÁREA", "105": "105 | LIMPEZA DE EQUIPAMENTO/ÁREA",
+    "107": "107 | TROCA DE BOBINA", "109": "109 | TROCA DE INSUMOS", "111": "111 | ATRASO NO INÍCIO DO TURNO",
+    "113": "113 | REGULAGEM DE MÁQUINA", "117": "117 | AJUSTE DE GUIAS", "124": "124 | AJUSTE DE DATADOR",
+    "127": "127 | AJUSTE SELADORA 3M", "128": "128 | ACÚMULO NA ESTEIRA DA LINHA", "131": "131 | PARADA DA ESTEIRA DE TRANSPORTE",
+    "141": "141 | AJUSTE DE ENCAIXOTADORA", "155": "155 | TROCA DE MOEGA", "401": "401 | FALTA DE ENERGIA", 
+    "402": "402 | FALTA DE ÁGUA", "404": "404 | FALTA DE AR COMPRIMIDO", "407": "407 | FALTA DE PRODUTO", 
+    "408": "408 | PROBLEMA DE REDE/TI", "501": "501 | FALTA DE INSUMO/MATÉRIA PRIMA", 
+    "504": "504 | FALTA DE ESPAÇO - ESTOQUE CHEIO", "601": "601 | PROBLEMA NA EMBALAGEM PRIMÁRIA", 
+    "603": "603 | PROBLEMA NA EMBALAGEM SECUNDÁRIA", "604": "604 | DESVIOS DE QUALIDADE", 
+    "608": "608 | RETRABALHO DE PRODUTO NÃO CONFORME"
+}
 
-# FUNÇÃO PARA ENVIAR LOGS E IMAGEM PARA O GOOGLE SHEETS/DRIVE
-def enviar_log_sheets(webhook_url, dados):
-  """Envia os dados de registro e imagem via HTTP POST"""
-  if not webhook_url or "SUA_URL" in webhook_url:
-    return False
-  try:
-    res = requests.post(webhook_url, json=dados, timeout=25)
-    if res.status_code == 200 and "Sucesso" in res.text:
-      return True
-    return False
-  except Exception as e:
-    print(f"Erro ao enviar para o webhook: {e}")
-    return False
+st.set_page_config(
+    page_title="Check-lists Produção",
+    page_icon="📋",
+    layout="wide"
+)
 
-
-# ESTILIZAÇÃO CSS
-st.markdown(
-    """
+st.markdown("""
 <style>
-    header[data-testid="stHeader"] { background-color: transparent; }
-
-    .login-container {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 35px 25px;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-        border-top: 6px solid #e67e22;
-        margin-top: 20px;
-    }
-    .qualit3c-logo {
-        font-size: 2.3rem;
-        font-weight: 800;
-        color: #333333;
-        text-align: center;
-        margin-bottom: 5px;
-    }
-    .qualit3c-logo span { color: #e67e22; }
-    .qualit3c-subtitle {
-        text-align: center;
-        color: #7f8c8d;
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        margin-bottom: 25px;
-    }
-
-    .stApp {
-        background-color: #f2f4f7;
-        color: #2c3e50;
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    }
-
     .qualit3c-topbar {
         background: linear-gradient(90deg, #d35400 0%, #e67e22 100%);
         color: #ffffff;
-        padding: 12px 18px;
-        border-radius: 6px;
-        margin-bottom: 18px;
+        padding: 14px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
-    .qualit3c-topbar-user {
-        font-size: 0.95rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        color: #ffffff;
-        margin-bottom: 4px;
-    }
-    .qualit3c-topbar-title {
-        font-size: 1.25rem;
+    .qualit3c-title {
+        font-size: 1.3rem;
         font-weight: 800;
-        color: #ffffff;
         margin: 0;
     }
-
-    .qualit3c-card {
-        background-color: #ffffff;
-        border: 1px solid #dcdfe6;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 18px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-    }
-
-    details {
-        background-color: #f8f9fa;
-        border: 1px solid #dcdfe6;
-        border-radius: 6px;
-        padding: 10px 14px;
-        margin-top: 10px;
-        margin-bottom: 10px;
-    }
-    summary {
+    .qualit3c-footer {
+        text-align: center;
+        color: #7f8c8d;
+        font-size: 0.85rem;
         font-weight: 700;
-        cursor: pointer;
-        color: #2c3e50;
+        margin-top: 30px;
+        padding: 10px;
+        border-top: 1px solid #dcdfe6;
     }
-
     .stButton > button {
         background-color: #e67e22 !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 6px !important;
-        font-weight: 600 !important;
-        padding: 10px 20px !important;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 4px rgba(230, 126, 34, 0.3);
-    }
-    .stButton > button:hover {
-        background-color: #d35400 !important;
-        box-shadow: 0 4px 8px rgba(211, 84, 0, 0.4);
-    }
-
-    section[data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e0e0e0;
+        font-weight: 700 !important;
     }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# CONFIGURAÇÕES NA SIDEBAR
-api_keys = []
-
-if st.session_state.pagina > 1:
-  st.sidebar.header("👤 Validador Ativo")
-  st.sidebar.info(
-      f"**Nome:** {st.session_state.usuario_nome}\n\n"
-      f"**Função:** {st.session_state.usuario_funcao}\n\n"
-      f"**Matrícula:** {st.session_state.usuario_matricula}\n\n"
-      f"**Login:** {st.session_state.hora_login}"
-  )
-
-  if st.sidebar.button("🚪 Sair / Trocar Usuário", use_container_width=True):
+if "pagina" not in st.session_state:
     st.session_state.pagina = 1
-    st.session_state.usuario_nome = ""
-    st.session_state.usuario_funcao = ""
-    st.session_state.usuario_matricula = ""
-    st.session_state.imagem_capturada = None
-    st.session_state.resultado_analise = ""
-    st.rerun()
+if "operador_matricula" not in st.session_state:
+    st.session_state.operador_matricula = ""
+if "operador_nome" not in st.session_state:
+    st.session_state.operador_nome = ""
+if "setor_selecionado" not in st.session_state:
+    st.session_state.setor_selecionado = "Polivalente"
+if "area_atuacao" not in st.session_state:
+    st.session_state.area_atuacao = "Envase"
+if "registros_completos" not in st.session_state:
+    st.session_state.registros_completos = []
 
-  st.sidebar.markdown("---")
-  st.sidebar.header("⚙️ Configurações do Sistema")
+if "lista_ocorrencias_input" not in st.session_state:
+    st.session_state.lista_ocorrencias_input = [{"id": 0, "codigo": "Nenhuma", "minutos": 0}]
+if "next_oc_id" not in st.session_state:
+    st.session_state.next_oc_id = 1
 
-  if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
-    raw_api_keys = st.secrets["GEMINI_API_KEY"]
-  else:
-    raw_api_keys = st.sidebar.text_input(
-        "Chave(s) API do Gemini (separadas por vírgula):", type="password"
-    )
+dt_agora = obter_datetime_br()
+turno_atual = calcular_turno(dt_agora)
 
-  api_keys = (
-      [k.strip() for k in raw_api_keys.split(",") if k.strip()]
-      if raw_api_keys
-      else []
-  )
-
-# ==============================================================================
-# PÁGINA 1: IDENTIFICAÇÃO DO VALIDADOR
-# ==============================================================================
+# ---------------------------------------------------------
+# PÁGINA 1: IDENTIFICAÇÃO
+# ---------------------------------------------------------
 if st.session_state.pagina == 1:
-  col_left, col_center, col_right = st.columns([1, 1.8, 1])
-
-  with col_center:
-    st.markdown(
-        """
-        <div class="login-container">
-            <div class="qualit3c-logo">Qualit<span>3c</span></div>
-            <div class="qualit3c-subtitle">SISTEMA DE CONTROLE DE QUALIDADE</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.form("form_login"):
-      funcao_selecionada = st.selectbox(
-          "Função", ["Controle de Qualidade", "Operador de Produção"]
-      )
-
-      matricula_digitada = st.text_input("Matrícula", placeholder="Ex: 32164")
-
-      btn_entrar = st.form_submit_button("ENTRAR", use_container_width=True)
-
-      if btn_entrar:
-        mat_clean = matricula_digitada.strip()
-        if mat_clean == "":
-          st.error("O campo 'Matrícula' é obrigatório.")
-        else:
-          nome_colaborador = CADASTRO_COLABORADORES.get(
-              mat_clean, f"COLABORADOR {mat_clean}"
-          )
-
-          hora_agora = obter_hora_atual()
-
-          st.session_state.usuario_nome = nome_colaborador
-          st.session_state.usuario_funcao = funcao_selecionada
-          st.session_state.usuario_matricula = mat_clean
-          st.session_state.hora_login = hora_agora
-          st.session_state.pagina = 2
-
-          log_login = {
-              "data_hora": hora_agora,
-              "tipo_evento": "LOGIN",
-              "matricula": mat_clean,
-              "nome": nome_colaborador,
-              "funcao": funcao_selecionada,
-              "status": "LOGIN REALIZADO",
-              "detalhes": f"Acesso ao sistema às {hora_agora}",
-          }
-          enviar_log_sheets(WEBHOOK_URL, log_login)
-          st.rerun()
-
-# ==============================================================================
-# PÁGINA 2: LIBERAÇÃO DO PRODUTO FINAL
-# ==============================================================================
-elif st.session_state.pagina == 2:
-  st.markdown(
-      f"""
+    st.markdown("""
     <div class="qualit3c-topbar">
-        <div class="qualit3c-topbar-user">
-            👤 {st.session_state.usuario_nome.upper()} | {st.session_state.usuario_funcao.upper()}
-        </div>
-        <div class="qualit3c-topbar-title">📦 Liberação do Produto Final</div>
+        <div class="qualit3c-title">🏭 Check-lists Produção (PRO.DC1416)</div>
     </div>
-    """,
-      unsafe_allow_html=True,
-  )
+    """, unsafe_allow_html=True)
+    
+    col_l, col_c, col_r = st.columns([1, 1.8, 1])
+    with col_c:
+        st.subheader("🔑 Identificação")
+        with st.form("form_login_operador"):
+            mat_input = st.text_input("Matrícula:", placeholder="32164")
+            setor_input = st.selectbox("Setor:", ["Polivalente", "Instantâneos", "Revolução"])
+            area_input = st.selectbox("Área de Atuação:", ["Envase", "Mistura", "Pré-Mix", "Gestão"])
+            
+            btn_entrar = st.form_submit_button("ACESSAR SISTEMA DIGITAL", use_container_width=True)
+            if btn_entrar:
+                mat_clean = mat_input.strip()
+                if not mat_clean:
+                    st.error("Informe a matrícula.")
+                elif mat_clean not in CADASTRO_COLABORADORES:
+                    st.error("❌ Matrícula não cadastrada no sistema!")
+                else:
+                    nome_completo = CADASTRO_COLABORADORES[mat_clean]
+                    primeiro_nome = nome_completo.split()[0]
+                    st.session_state.operador_matricula = mat_clean
+                    st.session_state.operador_nome = primeiro_nome
+                    st.session_state.operador_nome_completo = nome_completo
+                    st.session_state.setor_selecionado = setor_input
+                    st.session_state.area_atuacao = area_input
+                    st.session_state.pagina = 2
+                    st.rerun()
 
-  GSHEET_OP_URL = "https://docs.google.com/spreadsheets/d/1YScgtOowZjmTWMKnlcwya1nPQKt0u34luPSb4U82_-E/export?format=csv&gid=607447606"
+# ---------------------------------------------------------
+# PÁGINA 2: FORMULÁRIO OU GESTÃO
+# ---------------------------------------------------------
+elif st.session_state.pagina == 2:
+    st.markdown(f"""
+    <div class="qualit3c-topbar">
+        <div style="font-size: 0.85rem; font-weight: 700;">USUÁRIO: {st.session_state.operador_nome.upper()} ({st.session_state.operador_matricula}) | SETOR: {st.session_state.setor_selecionado.upper()} | ÁREA: {st.session_state.area_atuacao.upper()}</div>
+        <div class="qualit3c-title">Check-lists Produção (PRO.DC1416 - R00)</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.sidebar.markdown(f"**Nome:** {st.session_state.operador_nome}")
+    st.sidebar.markdown(f"**Matrícula:** {st.session_state.operador_matricula}")
+    st.sidebar.markdown(f"**Setor:** {st.session_state.setor_selecionado}")
+    st.sidebar.markdown(f"**Área:** {st.session_state.area_atuacao}")
+    if st.sidebar.button("Trocar Usuário / Área", use_container_width=True):
+        st.session_state.pagina = 1
+        st.rerun()
 
-  SHEET_DUN_ID = "1TDROYy4E6u41k6n05lWyGfh3o7SjYz4JoofK1saNC-M"
-  GSHEET_DUN_URL = (
-      f"https://docs.google.com/spreadsheets/d/{SHEET_DUN_ID}/export?format=csv"
-  )
+    maquinas_opcoes = MAQUINAS_POR_SETOR.get(st.session_state.setor_selecionado, [])
 
+    if st.session_state.area_atuacao == "Envase":
+        st.subheader("📝 Controle de empacotamentos")
 
-  @st.cache_data(ttl=60)
-  def carregar_dados_gsheet(url):
-    return pd.read_csv(url, dtype=str)
+        df_ops_live = carregar_dados_externos(GSHEET_OP_URL)
 
+        c_m1, c_m2, c_m3 = st.columns([1.5, 1, 1])
+        with c_m1:
+            maq_sel = st.selectbox("Selecione a Máquina:", maquinas_opcoes, key="selectbox_maquina_atual")
+        with c_m2:
+            data_prod = st.date_input("Data (dd/mm/aaaa):", dt_agora, format="DD/MM/YYYY")
+        with c_m3:
+            turno_sel = st.selectbox("Turno:", ["Turno A", "Turno B", "Turno C"], index=["Turno A", "Turno B", "Turno C"].index(turno_atual))
 
-  dados_op = None
-  dados_dun = None
+        equipe_sugerida = EQUIPE_FIXA_MAQUINAS.get(maq_sel, {"operador": "", "auxiliares": []})
+        
+        st.markdown("---")
+        st.markdown("##### 1. Identificação e Produto")
 
-  try:
-    dados_op = carregar_dados_gsheet(GSHEET_OP_URL)
-  except Exception:
-    pass
+        produtos_encontrados = []
+        detalhes_produtos = {}
 
-  try:
-    dados_dun = carregar_dados_gsheet(GSHEET_DUN_URL)
-  except Exception:
-    pass
+        if df_ops_live is not None and not df_ops_live.empty:
+            cols = list(df_ops_live.columns)
+            maq_norm_busca = re.sub(r'[^A-Z0-9]', '', maq_sel.upper())
+            
+            for idx, col in enumerate(cols):
+                for _, row in df_ops_live.iterrows():
+                    val_celula = re.sub(r'[^A-Z0-9]', '', str(row.get(col, "")).upper())
+                    if maq_norm_busca in val_celula:
+                        p_val = ""
+                        l_val = ""
+                        
+                        for offset in range(1, 5):
+                            if idx + offset < len(cols):
+                                cell_val = str(row.get(cols[idx + offset], "")).strip()
+                                if cell_val and cell_val.lower() not in ["nan", "none", "false", "true"]:
+                                    if not p_val and len(cell_val) > 4 and not cell_val.replace(".", "").isdigit():
+                                        p_val = cell_val
+                                    elif p_val and not l_val and cell_val.isdigit() and len(cell_val) >= 6:
+                                        l_val = cell_val
+                                        break
+                        
+                        if p_val and p_val not in produtos_encontrados:
+                            produtos_encontrados.append(p_val)
+                            
+                            gramatura_extraida = ""
+                            match_g = re.search(r'(\d+\s*(?:G|KG))', p_val, re.IGNORECASE)
+                            if match_g:
+                                gramatura_extraida = match_g.group(1).upper().replace(" ", "")
 
-  with st.expander("📋 Tabela de Referência para Liberação (OPs e SKUs)"):
-    col1, col2 = st.columns(2)
-    with col1:
-      st.subheader("Ordens de Produção (OP)")
-      if dados_op is not None:
-        st.dataframe(dados_op, use_container_width=True)
-      else:
-        st.info("Tabela de OPs em carregamento...")
+                            detalhes_produtos[p_val] = {
+                                "lote": l_val,
+                                "marca": "3CORAÇÕES",
+                                "gramatura": gramatura_extraida
+                            }
 
-    with col2:
-      st.subheader("Cadastro SKU x DUN")
-      if dados_dun is not None:
-        st.dataframe(dados_dun, use_container_width=True)
-      else:
-        st.info("Planilha de DUNs em carregamento...")
+        if not produtos_encontrados:
+            produtos_encontrados = ["➕ Digitar Produto Manualmente..."]
+            detalhes_produtos["➕ Digitar Produto Manualmente..."] = {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""}
 
-  if not api_keys:
-    st.warning(
-        "⚠️ Insira pelo menos uma Chave de API na barra lateral para prosseguir."
-    )
-    st.stop()
+        prod_escolhido = st.selectbox(f"Selecione o Produto para {maq_sel}:", produtos_encontrados, key=f"prod_sel_{maq_sel}")
 
-  img_file_buffer = st.file_uploader(
-      "Upload da foto do produto / embalagem",
-      type=["jpg", "jpeg", "png"],
-      label_visibility="collapsed",
-  )
+        dados_p = detalhes_produtos.get(prod_escolhido, {"lote": "", "marca": "3CORAÇÕES", "gramatura": ""})
 
-  if img_file_buffer is not None:
-    image = Image.open(img_file_buffer)
+        desc_produto = st.text_input("Descrição do Produto:", value=prod_escolhido if prod_escolhido != "➕ Digitar Produto Manualmente..." else "")
+        lote_prod = st.text_input("Lote (Carregado da OP):", value=dados_p["lote"])
+        marca_produto = st.text_input("Marca:", value=dados_p["marca"])
+        gramatura_prod = st.text_input("Gramatura (g):", value=dados_p["gramatura"])
 
-    col_img, col_btn = st.columns([1.2, 1])
-    with col_img:
-      st.image(image, caption="Imagem Capturada", use_container_width=True)
+        # --- BUSCA ROBUSTA DA META NA PLANILHA ---
+        meta_sugerida = carregar_metas_direto(GSHEET_METAS_URL, maq_sel)
 
-    with col_btn:
-      st.write(" ")
-      st.write(" ")
-      if st.button(
-          "🔬 PROCESSAR E GERAR LIBERAÇÃO", use_container_width=True
-      ):
-        with st.spinner(
-            "⚡ Leitura OCR de alta precisão e validações em curso..."
-        ):
-          dt_now = obter_datetime_br()
-          hora_foto = dt_now.strftime("%d/%m/%Y %H:%M:%S")
-          turno_atual = calcular_turno(dt_now)
+        st.markdown("##### 2. Produção e Ocorrências")
+        tm1, tm2, tm3 = st.columns(3)
+        with tm1: 
+            meta_prod = st.number_input("Meta (unid):", value=meta_sugerida, step=100, key=f"meta_val_{maq_sel}_{meta_sugerida}")
+        with tm2: 
+            tot_prod = st.number_input("Total Produção Final:", value=0, step=1)
+        with tm3: 
+            sem_prog = st.checkbox("Máquina Sem Programação")
 
-          image_otimizada = image.copy()
-          if image_otimizada.width > 2048 or image_otimizada.height > 2048:
-            image_otimizada.thumbnail((2048, 2048))
+        st.markdown("---")
+        st.markdown("##### 🔍 Apontamento de Ocorrências (Código | Motivo)")
 
-          prompt_ocr = """
-                    Você é um motor de OCR industrial sênior. Sua ÚNICA tarefa nesta imagem é extrair com precisão absoluta os números correspondentes ao SKU, lote e validades.
-                    NÃO extraia nomes de produtos da caixa, pois as caixas são multiuso.
+        lista_opcoes_oc = ["Nenhuma"] + list(CODIGOS_OCORRENCIAS.values())
+        indices_para_remover = []
 
-                    Retorne ESTRITAMENTE o modelo abaixo preenchido:
-
-                    SKU: [Código SKU numérico impresso próximo ao código de barras do produto ativo]
-                    TEM_ETIQUETA: [SIM ou NAO]
-                    DUN: [Código DUN-14 da etiqueta ou NAO_APLICAVEL]
-                    VALIDADE_ETIQUETA: [Validade impressa na etiqueta]
-                    VALIDADE_REFIL: [Validade impressa na lata/refil/caixa]
-                    MAQUINA: [Código da máquina/linha, ex: ML01, B22, M028]
-                    LOTE_CAIXA: [Apenas os números do lote da caixa/etiqueta]
-                    LOTE_REFIL: [Apenas os números do lote do refil/lata]
-                    """
-
-          MODELO_LITE = "gemini-3.5-flash-lite"
-          resposta = None
-
-          for key in api_keys:
-            try:
-              client = genai.Client(api_key=key)
-              resposta = client.models.generate_content(
-                  model=MODELO_LITE, contents=[image_otimizada, prompt_ocr]
-              )
-              if resposta and resposta.text:
-                break
-            except Exception as e:
-              st.error(f"Erro na API com o modelo {MODELO_LITE}: {e}")
-              continue
-
-          if resposta and resposta.text:
-            raw_ocr = resposta.text
-
-            def get_field(field_name, default=""):
-              m = re.search(rf"{field_name}:\s*(.*)", raw_ocr, re.IGNORECASE)
-              return m.group(1).strip() if m else default
-
-            sku_lido = get_field("SKU", "")
-            tem_etiqueta_raw = get_field("TEM_ETIQUETA", "NAO")
-            tem_etiqueta = (
-                "SIM" in tem_etiqueta_raw.upper()
-                and "NAO" not in tem_etiqueta_raw.upper()
-            )
-
-            dun_lido = get_field("DUN", "NAO_APLICAVEL")
-            val_etiqueta_raw = get_field("VALIDADE_ETIQUETA", "")
-            val_refil_raw = get_field("VALIDADE_REFIL", "")
-
-            maquina_lida = get_field("MAQUINA", "")
-            lote_cx_raw = get_field("LOTE_CAIXA", "")
-            lote_refil_raw = get_field("LOTE_REFIL", "")
-
-            # BUSCA DA DESCRIÇÃO OFICIAL 100% NA PLANILHA DE OPs COM BASE NO SKU
-            descricao_lida = buscar_descricao_por_sku(sku_lido, dados_op)
-
-            motivos_reprovacao = []
-
-            # 1. VALIDAÇÃO DETERMINÍSTICA DE VALIDADE EM PYTHON
-            val_conforme, motivo_val, status_val_msg = validar_validade(
-                val_etiqueta_raw, val_refil_raw
-            )
-            if not val_conforme:
-              motivos_reprovacao.append(motivo_val)
-
-            # 2. VALIDAÇÃO DETERMINÍSTICA DE LOTE EM PYTHON
-            digitos_cx = extrair_lote_numerico(lote_cx_raw)
-            digitos_refil = extrair_lote_numerico(lote_refil_raw)
-
-            lote_conforme = True
-            if (
-                digitos_cx
-                and digitos_refil
-                and "NAO" not in lote_refil_raw.upper()
-            ):
-              if digitos_cx != digitos_refil:
-                lote_conforme = False
-                motivos_reprovacao.append(
-                    f"Divergência de Lote: Caixa ({digitos_cx}) x Refil/Lata"
-                    f" ({digitos_refil})."
+        for idx, item in enumerate(st.session_state.lista_ocorrencias_input):
+            c_oc, c_min = st.columns([2.5, 1.5])
+            with c_oc:
+                cod_val = st.selectbox(
+                    f"Ocorrência {idx+1}:", 
+                    lista_opcoes_oc, 
+                    key=f"oc_cod_item_{item['id']}"
                 )
+                item["codigo"] = cod_val
+            with c_min:
+                min_val = st.number_input(
+                    "Minutos:", 
+                    value=item["minutos"], 
+                    min_value=0, 
+                    step=5, 
+                    key=f"oc_min_item_{item['id']}"
+                )
+                item["minutos"] = min_val
+            
+            if idx > 0:
+                if st.button(f"🗑️ Remover Ocorrência {idx+1}", key=f"btn_del_oc_{item['id']}"):
+                    indices_para_remover.append(idx)
 
-            # 3. VALIDAÇÃO DETERMINÍSTICA DE DUN-14 (Somente se for etiqueta Argox)
-            dun_conforme, motivo_dun, status_dun_msg = validar_dun14(
-                dun_lido, tem_etiqueta, dados_dun
-            )
-            if not dun_conforme:
-              motivos_reprovacao.append(motivo_dun)
-
-            # Lote base para o nome do arquivo
-            lote_num_base = digitos_cx if digitos_cx else digitos_refil
-
-            lote_refil_exibicao = (
-                f"L {digitos_refil}"
-                if digitos_refil
-                else "Lote idêntico à caixa (Refil sobreposto)"
-            )
-            lote_cx_exibicao = (
-                f"L {digitos_cx}" if digitos_cx else f"L {lote_cx_raw}"
-            )
-
-            validade_principal = (
-                val_etiqueta_raw if val_etiqueta_raw else val_refil_raw
-            )
-
-            # Parecer Final
-            if val_conforme and lote_conforme and dun_conforme:
-              status_final = "APROVADO"
-              cabecalho_status = "### ✅ PRODUTO CONFORME - LIBERAÇÃO APROVADA"
-              subtitulo_motivo = ""
-            else:
-              status_final = "REPROVADO"
-              cabecalho_status = (
-                  "### ❌ PRODUTO NÃO CONFORME - LIBERAÇÃO REPROVADA"
-              )
-              subtitulo_motivo = (
-                  "\n**Motivo da Não Conformidade:** "
-                  + " | ".join(motivos_reprovacao)
-                  + "\n"
-              )
-
-            # Nome do arquivo no Drive
-            val_formatada = formatar_validade(validade_principal)
-            lote_formatado_drive = formatar_lote(lote_num_base)
-
-            partes_nome = [turno_atual, val_formatada]
-            if maquina_lida:
-              partes_nome.append(maquina_lida)
-            partes_nome.append(lote_formatado_drive)
-            partes_nome.append("RN.jpg")
-
-            nome_arquivo_drive = " ".join(partes_nome)
-
-            dun_exibicao = (
-                dun_lido
-                if tem_etiqueta
-                else "Não Aplicável (Caixa de Papelão / Impressão Direta)"
-            )
-
-            parecer_exibicao = f"""{cabecalho_status}
-{subtitulo_motivo}
-<details>
-<summary>📁 <b>1. Extração de Dados da Embalagem</b></summary>
-
-- **Descrição Oficial (Planilha OP):** {descricao_lida}
-- **Código SKU:** {sku_lido}
-- **Tipo de Embalagem:** {"Etiqueta Adesiva Argox" if tem_etiqueta else "Caixa de Papelão / Impressão Direta"}
-- **Código DUN-14:** {dun_exibicao}
-- **Lote da Caixa/Etiqueta (Secundária):** {lote_cx_exibicao}
-- **Lote da Lata/Refil (Primária):** {lote_refil_exibicao}
-- **Validade Etiqueta/Caixa:** {val_etiqueta_raw if val_etiqueta_raw else "Não identificada"}
-- **Validade Lata/Refil:** {val_refil_raw if val_refil_raw else "Não identificada"}
-</details>
-
-<details>
-<summary>📁 <b>2. Regras de Validação</b></summary>
-
-- **Consistência de Validade:** {status_val_msg}
-- **Consistência de Lote:** {"Conforme (Lotes verificados e equivalentes)" if lote_conforme else "Não Conforme (Divergência de dígitos)"}
-- **Validação do DUN-14:** {status_dun_msg}
-- **Cruzamento SKU x DUN x OP:** {"Conforme com a OP Ativa" if (val_conforme and lote_conforme and dun_conforme) else "Não Conforme"}
-</details>
-""".strip()
-
-            imagem_b64 = converter_imagem_base64(image_otimizada)
-
-            st.session_state.imagem_capturada = image
-            st.session_state.resultado_analise = parecer_exibicao
-            st.session_state.hora_analise = hora_foto
-
-            log_liberacao = {
-                "data_hora": hora_foto,
-                "tipo_evento": "LIBERACAO_PRODUTO",
-                "matricula": st.session_state.usuario_matricula,
-                "nome": st.session_state.usuario_nome,
-                "funcao": st.session_state.usuario_funcao,
-                "status": status_final,
-                "detalhes": parecer_exibicao[:400].replace("\n", " "),
-                "nome_arquivo": nome_arquivo_drive,
-                "imagem_base64": imagem_b64,
-            }
-
-            enviar_log_sheets(WEBHOOK_URL, log_liberacao)
-
-            st.session_state.pagina = 3
+        if indices_para_remover:
+            for i in indices_para_remover:
+                st.session_state.lista_ocorrencias_input.pop(i)
             st.rerun()
 
-# ==============================================================================
-# PÁGINA 3: RESULTADO DA LIBERAÇÃO E PARECER TÉCNICO
-# ==============================================================================
-elif st.session_state.pagina == 3:
-  st.markdown(
-      f"""
-    <div class="qualit3c-topbar">
-        <div class="qualit3c-topbar-user">
-            👤 {st.session_state.usuario_nome.upper()} | {st.session_state.usuario_funcao.upper()}
-        </div>
-        <div class="qualit3c-topbar-title">📋 Parecer Final - Liberação do Produto Final</div>
-    </div>
-    """,
-      unsafe_allow_html=True,
-  )
+        if st.button("➕", use_container_width=False):
+            st.session_state.lista_ocorrencias_input.append({
+                "id": st.session_state.next_oc_id, 
+                "codigo": "Nenhuma", 
+                "minutos": 0
+            })
+            st.session_state.next_oc_id += 1
+            st.rerun()
 
-  col_esq, col_dir = st.columns([1, 1.2])
+        st.markdown("---")
 
-  with col_esq:
-    st.markdown(
-        """
-        <div class="qualit3c-card">
-            <div style="font-size: 1.15rem; font-weight: 700; color: #2c3e50; margin-bottom: 12px; border-bottom: 2px solid #e67e22; padding-bottom: 6px;">
-                📷 Imagem do Produto Inspecionado
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.session_state.imagem_capturada:
-      st.image(st.session_state.imagem_capturada, use_container_width=True)
+        st.markdown("##### 3. Perdas e Equipe da Linha")
+        d1, d2, d3 = st.columns(3)
+        with d1: desp_primaria = st.number_input("Embalagem Primária (kg):", value=0.0, format="%.3f")
+        with d2: desp_secundaria = st.number_input("Embalagem Secundária:", value=0.0)
+        with d3: desp_reprocesso = st.number_input("Reprocesso (kg):", value=0.0)
 
-    st.info(
-        f"⏱️ **Horário da Foto / Análise de P.A.:** {st.session_state.hora_analise}"
-    )
+        st.markdown("##### 👥 Equipe da Linha (Operador e Auxiliares)")
+        operador_linha = st.text_input("Operador da Máquina:", value=equipe_sugerida["operador"])
 
-  with col_dir:
-    st.markdown(
-        """
-        <div class="qualit3c-card">
-            <div style="font-size: 1.15rem; font-weight: 700; color: #2c3e50; margin-bottom: 12px; border-bottom: 2px solid #e67e22; padding-bottom: 6px;">
-                🔍 Relatório de Liberação
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        aux_fixos_sugeridos = equipe_sugerida["auxiliares"]
+        opcoes_multiselect = sorted(list(set(TODOS_AUXILIARES_GERAL + aux_fixos_sugeridos)))
 
-    st.markdown(st.session_state.resultado_analise, unsafe_allow_html=True)
+        aux_marcados = st.multiselect(
+            "Auxiliares de empacotamento:", 
+            options=opcoes_multiselect, 
+            default=aux_fixos_sugeridos, 
+            key=f"multiselect_aux_{maq_sel}"
+        )
 
-    st.markdown("---")
+        st.markdown("##### 📝 OBSERVAÇÕES:")
+        obs_texto = st.text_area(
+            "Observações (detalhe aqui qualquer ocorrência, problema ou ponto de atenção):", 
+            placeholder="Digite aqui observações relevantes sobre o turno...", 
+            height=100, 
+            key=f"obs_{maq_sel}"
+        )
 
-    c1, c2 = st.columns(2)
-    with c1:
-      if st.button("🔄 REALIZAR NOVA LIBERAÇÃO", use_container_width=True):
-        st.session_state.pagina = 2
-        st.session_state.imagem_capturada = None
-        st.session_state.resultado_analise = ""
-        st.rerun()
-    with c2:
-      if st.button("🚪 SAIR DO SISTEMA", use_container_width=True):
-        st.session_state.pagina = 1
-        st.session_state.usuario_nome = ""
-        st.session_state.usuario_funcao = ""
-        st.session_state.usuario_matricula = ""
-        st.rerun()
+        st.markdown("")
+        btn_salvar_envase = st.button("💾 ENVIAR", use_container_width=True)
+
+        if btn_salvar_envase:
+            ocorrencias_coletadas = []
+            for oc_item in st.session_state.lista_ocorrencias_input:
+                if oc_item["codigo"] != "Nenhuma" and oc_item["minutos"] > 0:
+                    ocorrencias_coletadas.append(f"{oc_item['codigo']} ({oc_item['minutos']} min)")
+
+            auxiliares_str = ", ".join([a.upper() for a in aux_marcados])
+
+            registro = {
+                "data": data_prod.strftime("%d/%m/%Y"),
+                "turno": turno_sel,
+                "setor": st.session_state.setor_selecionado,
+                "area": "Envase",
+                "maquina": maq_sel,
+                "produto": f"{desc_produto} ({gramatura_prod})" if gramatura_prod else desc_produto,
+                "lote": lote_prod if not sem_prog else "-",
+                "meta": meta_prod,
+                "producao": tot_prod if not sem_prog else "Sem programação",
+                "ocorrencias": ocorrencias_coletadas,
+                "desp_primaria": desp_primaria,
+                "operador_linha": operador_linha,
+                "auxiliares": auxiliares_str,
+                "observacoes": obs_texto.strip(),
+                "operador_sistema": st.session_state.operador_nome_completo
+            }
+            st.session_state.registros_completos.append(registro)
+            st.success(f"Apontamento da máquina {maq_sel} salvo com sucesso!")
+
+    elif st.session_state.area_atuacao in ["Mistura", "Pré-Mix"]:
+        tipo_label = st.session_state.area_atuacao
+        st.subheader(f"🥣 Apontamento de {tipo_label}")
+
+        with st.form("form_mistura_premix"):
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                prod_m = st.text_input("Descrição do Produto:", placeholder="Ex: Café com leite tradicional")
+            with col_m2:
+                qtd_batidas = st.number_input(f"Qtd de {tipo_label}s / Batidas:", min_value=1, value=1, step=1)
+            with col_m3:
+                lote_m = st.text_input("Lote do Batch/Mistura:", placeholder="Ex: PA 1096176")
+
+            obs_m = st.text_area("Observações:", placeholder="Detalhes opcionais...")
+
+            btn_salvar_m = st.form_submit_button(f"💾 SALVAR {tipo_label.upper()}", use_container_width=True)
+
+            if btn_salvar_m:
+                if prod_m.strip():
+                    registro = {
+                        "data": dt_agora.strftime("%d/%m/%Y"),
+                        "turno": turno_atual,
+                        "setor": st.session_state.setor_selecionado,
+                        "area": tipo_label,
+                        "maquina": tipo_label,
+                        "produto": prod_m.strip(),
+                        "lote": lote_m.strip(),
+                        "producao": qtd_batidas,
+                        "ocorrencias": [],
+                        "observacoes": obs_m.strip(),
+                        "operador_sistema": st.session_state.operador_nome_completo
+                    }
+                    st.session_state.registros_completos.append(registro)
+                    st.success(f"{tipo_label} do produto '{prod_m}' salva com sucesso!")
+                else:
+                    st.error("Informe o nome do produto.")
+
+    elif st.session_state.area_atuacao == "Gestão":
+        st.subheader("📲 Mensagem Pronta de Passagem de Turno (WhatsApp)")
+
+        data_f_str = dt_agora.strftime("%d.%m")
+        turno_letra = turno_atual.split()[-1]
+
+        regs = st.session_state.registros_completos
+
+        msg_lines = []
+        msg_lines.append(f"📊 *Produção {data_f_str} Turno {turno_letra}*\n")
+
+        envases = [r for r in regs if r["area"] == "Envase"]
+        if envases:
+            for ev in envases:
+                prod_str = f"{ev['producao']:,}".replace(",", ".") if isinstance(ev['producao'], (int, float)) else ev['producao']
+                msg_lines.append(f"*{ev['maquina']}:* {prod_str} / Meta: {ev.get('meta', 0):,}".replace(",", "."))
+                if ev['produto'] != "Sem programação":
+                    msg_lines.append(f"• Produto: {ev['produto']} | Lote: {ev['lote']}")
+                for oc in ev['ocorrencias']:
+                    msg_lines.append(f"• {oc}")
+                if ev.get("observacoes"):
+                    msg_lines.append(f"• Obs: {ev['observacoes']}")
+                msg_lines.append("")
+        else:
+            msg_lines.append("*Volpack:* 20.640")
+            msg_lines.append("*Evolution 01:* 10.650\n• 14 | DDS (20 min)\n• 113 | REGULAGEM DE MÁQUINA (15 min)\n")
+            msg_lines.append("*M028:* Sem programação\n")
+
+        misturas = [r for r in regs if r["area"] == "Mistura"]
+        if misturas:
+            df_m = pd.DataFrame(misturas).groupby("produto")["producao"].sum().reset_index()
+            msg_lines.append("*Misturas:*")
+            for _, row in df_m.iterrows():
+                msg_lines.append(f"{row['producao']} {row['produto']}")
+            msg_lines.append("")
+
+        premixes = [r for r in regs if r["area"] == "Pré-Mix"]
+        if premixes:
+            df_p = pd.DataFrame(premixes).groupby("produto")["producao"].sum().reset_index()
+            msg_lines.append("*Pesagem de Pré-Mix:*")
+            for _, row in df_p.iterrows():
+                msg_lines.append(f"{row['producao']} {row['produto']}")
+            msg_lines.append("")
+
+        texto_msg_pronta = "\n".join(msg_lines)
+
+        st.text_area("Copie a mensagem formatada abaixo para enviar no WhatsApp:", value=texto_msg_pronta, height=350)
+
+        st.markdown("---")
+        st.subheader("📊 Relatório Geral de Registros Detalhados")
+        
+        if regs:
+            df_mestra = pd.DataFrame(regs)
+            st.dataframe(df_mestra, use_container_width=True)
+            
+            csv = df_mestra.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar Relatório de Registros (.CSV / Excel)",
+                data=csv,
+                file_name=f"Relatorio_Empacotamento_{data_f_str}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Nenhum registro no sistema ainda para o turno atual.")
+
+# ---------------------------------------------------------
+# RODAPÉ OFICIAL
+# ---------------------------------------------------------
+st.markdown("""
+<div class="qualit3c-footer">
+    CHECK-LISTS PRODUÇÃO | PRO.DC1416 - R00
+</div>
+""", unsafe_allow_html=True)
